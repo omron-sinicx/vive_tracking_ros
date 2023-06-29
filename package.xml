@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package>
+  <name>vive_tracking_ros</name>
+  <version>0.1.0</version>
+  <description>The vive_tracking_ros package</description>
+  <author>Cristian C. Beltran-Hernandez</author>
+  <author email="cristianbehe@gmail.com">Cristian C. Beltran-Hernandez</author>
+  
+  <license>BSD</license>
+  
+  <maintainer email="cristianbehe@gmail.com">Cristian C. Beltran-Hernandez</maintainer>
+  
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>std_srvs</build_depend>
+  <build_depend>tf_conversions</build_depend>
+  
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>std_srvs</run_depend>
+  <run_depend>tf_conversions</run_depend>
+  
+</package>

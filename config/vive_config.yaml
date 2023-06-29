@@ -1,0 +1,24 @@
+{
+    "devices":[
+        {
+          "name": "lighthouse_b",
+          "type": "Tracking Reference",
+          "serial":"LHB-1AE08060"
+        },
+        {
+          "name": "lighthouse_c",
+          "type": "Tracking Reference",
+          "serial":"LHB-A8D97DCA"
+        },
+        {
+          "name": "right_controller",
+          "type": "Controller",
+          "serial":"LHR-F5E7DF06"
+        },
+        {
+          "name": "left_controller",
+          "type": "Controller",
+          "serial":"LHR-FDE7BC00"
+        }
+    ]
+}
