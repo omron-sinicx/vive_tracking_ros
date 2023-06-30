@@ -5,6 +5,7 @@ import numpy as np
 
 import geometry_msgs.msg
 import sensor_msgs.msg
+import vive_tracking_ros.msg
 
 from tf_conversions import transformations as tr
 
@@ -20,7 +21,7 @@ class ViveTrackingROS():
         self.vr = triad_openvr(configfile_path=config_file)
 
         self.topic_map = {}
-        self.haptic_feedback_sub = rospy.Subscriber("/vive/feedback", sensor_msgs.msg.JoyFeedback, self.haptic_feedback)
+        self.haptic_feedback_sub = rospy.Subscriber("/vive/set_feedback", vive_tracking_ros.msg.ViveControllerFeedback, self.haptic_feedback)
 
         publishing_rate = int(rospy.get_param("~publishing_rate", 100))
         self.pub_rate = rospy.Rate(publishing_rate)
@@ -89,10 +90,12 @@ class ViveTrackingROS():
 
         twist_topic.publish(twist_msg)
 
-    def haptic_feedback(self, msg: sensor_msgs.msg.JoyFeedback):
-        device = self.vr.devices.get(msg.id, None)
+    def haptic_feedback(self, msg: vive_tracking_ros.msg.ViveControllerFeedback):
+        device = self.vr.devices.get(msg.controller_name, None)
         if device:
-            device.trigger_haptic_pulse(duration_micros=msg.intensity)
+            # Intensity assumed to be between 0 and 1 inclusive
+            duration_micros = int(np.clip(msg.duration_microsecs, 0.0, 3999.0))
+            device.trigger_haptic_pulse(duration_micros=duration_micros)
 
 
 def quaternion_rotate_vector(quaternion, vector):
