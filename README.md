@@ -13,20 +13,22 @@ This was tested on ROS Noetic / Ubuntu 20.04
 
 After installing dependencies and this package
 
-Start the VR server
-```
-roslaunch vive_tracking_ros server_vr.launch
-```
+1. Configure your system on the `vive_tracking_ros/config/vive_config.yaml` to easily identify each controller
 
-To close the node you can `Ctrl+C`. To close the vr server you have to kill the process.
-```
-rosrun vive_tracking_ros close_server.sh
-```
+2. Start the VR server
+      ```
+      roslaunch vive_tracking_ros server_vr.launch
+      ```
 
-To start tracking the controllers run (added part from original package):  
-```
-roslaunch vive_tracking_ros tracking_controller.launch
-```
+3. To close the node you can `Ctrl+C`. To close the vr server you have to kill the process.
+      ```
+      rosrun vive_tracking_ros close_server.sh
+      ```
+
+4. To start tracking the controllers run (added part from original package):  
+      ```
+      roslaunch vive_tracking_ros tracking_controller.launch
+      ```
 
 
 ## Installation instructions
