@@ -16,7 +16,7 @@ class ViveTrackingROS():
         rospy.init_node("vive_tracking_ros")
 
         config_file = rospy.get_param("~config_file", None)
-        
+
         self.vr = triad_openvr(configfile_path=config_file)
 
         self.topic_map = {}
@@ -55,7 +55,7 @@ class ViveTrackingROS():
         controller_inputs = self.vr.devices[device_name].get_controller_inputs()
 
         inputs_msg = sensor_msgs.msg.Joy()
-        
+
         inputs_msg.buttons = [
             int(controller_inputs['menu_button']),
             int(controller_inputs['trackpad_pressed']),
@@ -73,15 +73,14 @@ class ViveTrackingROS():
 
         if linear_velocity is None or angular_velocity is None:
             return
-        
 
         # Rotate twist to align with ROS world (x forward/backward, y right/left, z up/down)
         rotation = tr.quaternion_from_euler(0.0, np.deg2rad(45), np.deg2rad(-90))
         rotation = rotate_quaternion_by_rpy(0.0, np.deg2rad(-90), 0.0, rotation)
-        
+
         linear_velocity = quaternion_rotate_vector(rotation, linear_velocity[:])
         angular_velocity = quaternion_rotate_vector(rotation, angular_velocity[:])
-        
+
         twist_topic = self.topic_map.get(device_name, rospy.Publisher("/vive/" + device_name + "/twist", geometry_msgs.msg.Twist, queue_size=10))
 
         twist_msg = geometry_msgs.msg.Twist()
@@ -104,6 +103,7 @@ def quaternion_rotate_vector(quaternion, vector):
     q_vector = np.append(vector, 0)
     return tr.quaternion_multiply(tr.quaternion_multiply(quaternion, q_vector), tr.quaternion_conjugate(quaternion))[:3]
 
+
 def rotate_quaternion_by_rpy(roll, pitch, yaw, q_in, rotated_frame=False):
     """
     if rotated_frame == True, Apply RPY rotation in the reference frame of the quaternion.
@@ -118,6 +118,7 @@ def rotate_quaternion_by_rpy(roll, pitch, yaw, q_in, rotated_frame=False):
         q_rotated = tr.quaternion_multiply(q_rot, q_in)
 
     return q_rotated
+
 
 if __name__ == '__main__':
     vive_tracking_ros = ViveTrackingROS()
