@@ -1,4 +1,5 @@
 #!/bin/env python
+from math import floor
 import rospy
 import numpy as np
 
@@ -58,7 +59,7 @@ class ViveTrackingROS():
         inputs_msg.buttons = [
             int(controller_inputs['menu_button']),
             int(controller_inputs['trackpad_pressed']),
-            int(controller_inputs['trigger']),
+            floor(controller_inputs['trigger']),
             int(controller_inputs['grip_button']),
         ]
 
