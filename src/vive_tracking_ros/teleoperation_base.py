@@ -10,8 +10,7 @@ from vive_tracking_ros.msg import ViveControllerFeedback
 import tf2_ros
 import sys
 
-from ur_control import conversions, spalg, transformations
-
+from vive_tracking_ros import conversions, math_utils
 
 class TeleoperationBase:
     """ Convert Twist messages to PoseStamped
@@ -118,17 +117,17 @@ class TeleoperationBase:
         angular_vel = conversions.from_vector3(data.angular) * self.scale_velocities[3:]
 
         # transform to robot base frame
-        linear_vel = transformations.quaternion_rotate_vector(self.vive_to_robot_rotation, linear_vel)
-        angular_vel = transformations.quaternion_rotate_vector(self.vive_to_robot_rotation, angular_vel)
+        linear_vel = math_utils.quaternion_rotate_vector(self.vive_to_robot_rotation, linear_vel)
+        angular_vel = math_utils.quaternion_rotate_vector(self.vive_to_robot_rotation, angular_vel)
 
         # Position update
         next_pose = self.target_position + (linear_vel * dt)
 
         # Orientation update
-        next_orientation = transformations.integrateUnitQuaternionDMM(self.target_orientation, angular_vel, dt)
+        next_orientation = math_utils.integrate_unit_quaternion_DMM(self.target_orientation, angular_vel, dt)
 
         translation = next_pose - self.center_position
-        rotation = spalg.quaternions_orientation_error(next_orientation, self.center_orientation)
+        rotation = math_utils.quaternions_orientation_error(next_orientation, self.center_orientation)
 
         # DEBUG prints
         # rospy.loginfo_throttle(1, "translation %s dt %s" % (np.round(translation, 3), dt))
@@ -142,7 +141,7 @@ class TeleoperationBase:
             
             # rospy.loginfo_throttle(0.5, "limited angular vel %s" % (np.round(angular_vel_, 3)))
             
-            self.target_orientation = transformations.integrateUnitQuaternionDMM(self.target_orientation, np.array(angular_vel_), dt)
+            self.target_orientation = math_utils.integrate_unit_quaternion_DMM(self.target_orientation, np.array(angular_vel_), dt)
         else:
             self.target_position = next_pose
             self.target_orientation = next_orientation  # the last one is after dt passed
