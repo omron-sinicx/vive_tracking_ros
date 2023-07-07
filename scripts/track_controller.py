@@ -34,9 +34,9 @@ class ViveTrackingROS():
         update_devices_start_time = rospy.get_time()
 
         while not rospy.is_shutdown():
-            # Check for new controllers, remove disconnected ones every 30 seconds
 
-            if rospy.get_time() - update_devices_start_time > update_devices_interval:
+            # Check for new controllers, remove disconnected ones
+            if (rospy.get_time() - update_devices_start_time) > update_devices_interval:
                 update_devices_start_time = rospy.get_time()
                 self.vr.poll_vr_events()
 
