@@ -1,5 +1,5 @@
 import numpy as np
-
+from tf_conversions import transformations as tr
 
 def skew(v):
     """
@@ -83,3 +83,18 @@ def quaternion_rotate_vector(quaternion, vector):
     """
     q_vector = np.append(vector, 0)
     return quaternion_multiply(quaternion_multiply(quaternion, q_vector), quaternion_conjugate(quaternion))[:3]
+
+def rotate_quaternion_by_rpy(roll, pitch, yaw, q_in, rotated_frame=False):
+    """
+    if rotated_frame == True, Apply RPY rotation in the reference frame of the quaternion.
+
+    Otherwise, Apply RPY rotation in the rotated frame (the one to which the quaternion has rotated the reference frame).
+    """
+    q_rot = tr.quaternion_from_euler(roll, pitch, yaw)
+
+    if rotated_frame:
+        q_rotated = tr.quaternion_multiply(q_in, q_rot)
+    else:
+        q_rotated = tr.quaternion_multiply(q_rot, q_in)
+
+    return q_rotated

@@ -1,11 +1,12 @@
 #!/bin/env python
-from math import floor
+from math import floor, tau
 import rospy
 import numpy as np
 
 import geometry_msgs.msg
 import sensor_msgs.msg
 import vive_tracking_ros.msg
+from vive_tracking_ros import math_utils
 
 from tf_conversions import transformations as tr
 
@@ -76,11 +77,11 @@ class ViveTrackingROS():
             return
 
         # Rotate twist to align with ROS world (x forward/backward, y right/left, z up/down)
-        rotation = tr.quaternion_from_euler(0.0, np.deg2rad(45), np.deg2rad(-90))
-        rotation = rotate_quaternion_by_rpy(0.0, np.deg2rad(-90), 0.0, rotation)
+        rotation = tr.quaternion_from_euler(0.0, tau/8, 0.0)
+        rotation = math_utils.rotate_quaternion_by_rpy(-tau/4, tau/2, 0.0, rotation)
 
-        linear_velocity = quaternion_rotate_vector(rotation, linear_velocity[:])
-        angular_velocity = quaternion_rotate_vector(rotation, angular_velocity[:])
+        linear_velocity = math_utils.quaternion_rotate_vector(rotation, linear_velocity[:])
+        angular_velocity = math_utils.quaternion_rotate_vector(rotation, angular_velocity[:])
 
         twist_topic = self.topic_map.get(device_name, rospy.Publisher("/vive/" + device_name + "/twist", geometry_msgs.msg.Twist, queue_size=10))
 
@@ -96,31 +97,6 @@ class ViveTrackingROS():
             # Intensity assumed to be between 0 and 1 inclusive
             duration_micros = int(np.clip(msg.duration_microsecs, 0.0, 3999.0))
             device.trigger_haptic_pulse(duration_micros=duration_micros)
-
-
-def quaternion_rotate_vector(quaternion, vector):
-    """
-        Return vector rotated by a given unit quaternion
-        v' = q * v * q.conjugate() 
-    """
-    q_vector = np.append(vector, 0)
-    return tr.quaternion_multiply(tr.quaternion_multiply(quaternion, q_vector), tr.quaternion_conjugate(quaternion))[:3]
-
-
-def rotate_quaternion_by_rpy(roll, pitch, yaw, q_in, rotated_frame=False):
-    """
-    if rotated_frame == True, Apply RPY rotation in the reference frame of the quaternion.
-
-    Otherwise, Apply RPY rotation in the rotated frame (the one to which the quaternion has rotated the reference frame).
-    """
-    q_rot = tr.quaternion_from_euler(roll, pitch, yaw)
-
-    if rotated_frame:
-        q_rotated = tr.quaternion_multiply(q_in, q_rot)
-    else:
-        q_rotated = tr.quaternion_multiply(q_rot, q_in)
-
-    return q_rotated
 
 
 if __name__ == '__main__':
