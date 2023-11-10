@@ -1,5 +1,40 @@
+import math
 import numpy as np
 from tf_conversions import transformations as tr
+import rospy
+
+
+def quaternion_from_matrix(matrix):
+    """Return quaternion from rotation matrix.
+
+    >>> R = rotation_matrix(0.123, (1, 2, 3))
+    >>> q = quaternion_from_matrix(R)
+    >>> numpy.allclose(q, [0.0164262, 0.0328524, 0.0492786, 0.9981095])
+    True
+
+    """
+    q = np.empty((4, ), dtype=np.float64)
+    M = np.array(matrix, dtype=np.float64, copy=False)[:4, :4]
+    t = np.trace(M)
+    if t > M[3, 3]:
+        q[3] = t
+        q[2] = M[1, 0] - M[0, 1]
+        q[1] = M[0, 2] - M[2, 0]
+        q[0] = M[2, 1] - M[1, 2]
+    else:
+        i, j, k = 0, 1, 2
+        if M[1, 1] > M[0, 0]:
+            i, j, k = 1, 2, 0
+        if M[2, 2] > M[i, i]:
+            i, j, k = 2, 0, 1
+        t = M[i, i] - (M[j, j] + M[k, k]) + M[3, 3]
+        q[i] = t
+        q[j] = M[i, j] + M[j, i]
+        q[k] = M[k, i] + M[i, k]
+        q[3] = M[k, j] - M[j, k]
+    q *= 0.5 / math.sqrt(t * M[3, 3])
+    return q
+
 
 def skew(v):
     """
@@ -31,6 +66,16 @@ def quaternions_orientation_error(quat_target, quat_source):
     ee = qs[3]*np.array(qt[:3]) - qt[3]*np.array(qs[:3]) + np.dot(skew(qs[:3]), qt[:3])
     ee *= np.sign(ne)  # disambiguate the sign of the quaternion
     return ee
+
+
+def rotation_between_quaternions(q1, q2):
+    R1 = tr.quaternion_matrix(q1)
+    R2 = tr.quaternion_matrix(q2)
+
+    R_rel = np.dot(R2, np.linalg.inv(R1))
+    euler_angles = tr.euler_from_matrix(R_rel)
+
+    return np.array(euler_angles)
 
 
 def quaternion_conjugate(quaternion):
@@ -71,10 +116,19 @@ def integrate_unit_quaternion_DMM(q, w, dt):
     q_tmp = np.concatenate([np.sin(w_norm*dt/2)*w/w_norm, [np.cos(w_norm*dt/2.)]])
     return quaternion_multiply(q_tmp, q)
 
+
 def integrate_unit_quaternion_euler(q, w, dt):
     """ Integrate a unit quaterniong using Euler Method"""
     qw = np.append(w, 0)
     return (q + quaternion_multiply(qw, q)*0.5*dt)
+
+
+def normalize_quaternion(v, tolerance=0.00001):
+    mag2 = sum(n * n for n in v)
+    if mag2 > tolerance:
+        mag = math.sqrt(mag2)
+        v = tuple(n / mag for n in v)
+    return np.array(v)
 
 
 def quaternion_rotate_vector(quaternion, vector):
@@ -83,6 +137,7 @@ def quaternion_rotate_vector(quaternion, vector):
     """
     q_vector = np.append(vector, 0)
     return quaternion_multiply(quaternion_multiply(quaternion, q_vector), quaternion_conjugate(quaternion))[:3]
+
 
 def rotate_quaternion_by_rpy(roll, pitch, yaw, q_in, rotated_frame=False):
     """
@@ -98,3 +153,11 @@ def rotate_quaternion_by_rpy(roll, pitch, yaw, q_in, rotated_frame=False):
         q_rotated = tr.quaternion_multiply(q_rot, q_in)
 
     return q_rotated
+
+
+def is_unit_quaternion(q, tolerance=1e-6):
+    # Calculate the magnitude of the quaternion
+    magnitude = np.linalg.norm(q)
+
+    # Check if the magnitude is close to 1 within the specified tolerance
+    return np.isclose(magnitude, 1.0, rtol=tolerance)

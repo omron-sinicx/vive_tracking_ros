@@ -1,11 +1,14 @@
 import time
 import sys
+import numpy as np
 import openvr
 import math
 import json
 import traceback
 
 from functools import lru_cache
+from vive_tracking_ros.math_utils import quaternion_from_matrix
+from tf import transformations
 
 # Function to print out text but instead of starting a new line it will overwrite the existing line
 
@@ -18,28 +21,29 @@ def update_text(txt):
 
 
 def convert_to_euler(pose_mat):
-    yaw = 180 / math.pi * math.atan2(pose_mat[1][0], pose_mat[0][0])
-    pitch = 180 / math.pi * math.atan2(pose_mat[2][0], pose_mat[0][0])
-    roll = 180 / math.pi * math.atan2(pose_mat[2][1], pose_mat[2][2])
+    mat = np.identity(4)
+    mat[:3, :4] = list(pose_mat)
+    rot = transformations.euler_from_matrix(mat)
+
     x = pose_mat[0][3]
     y = pose_mat[1][3]
     z = pose_mat[2][3]
-    return [x, y, z, yaw, pitch, roll]
+
+    return [x, y, z, *rot]
 
 # Convert the standard 3x4 position/rotation matrix to a x,y,z location and the appropriate Quaternion
 
 
 def convert_to_quaternion(pose_mat):
-    # Per issue #2, adding a abs() so that sqrt only results in real numbers
-    r_w = math.sqrt(abs(1+pose_mat[0][0]+pose_mat[1][1]+pose_mat[2][2]))/2
-    r_x = (pose_mat[2][1]-pose_mat[1][2])/(4*r_w)
-    r_y = (pose_mat[0][2]-pose_mat[2][0])/(4*r_w)
-    r_z = (pose_mat[1][0]-pose_mat[0][1])/(4*r_w)
+    mat = np.identity(4)
+    mat[:3, :4] = list(pose_mat)
+    # Quaternions ix+jy+kz+w are represented as [x, y, z, w].
+    quat = quaternion_from_matrix(mat)
 
     x = pose_mat[0][3]
     y = pose_mat[1][3]
     z = pose_mat[2][3]
-    return [x, y, z, r_w, r_x, r_y, r_z]
+    return [x, y, z] + quat.tolist()
 
 # Define a class to make it easy to append pose matricies and convert to both Euler and Quaternion for plotting
 
@@ -296,7 +300,7 @@ class triad_openvr():
     def remove_tracked_device(self, tracked_device_index):
         if tracked_device_index in self.device_index_map:
             device_name = self.device_index_map[tracked_device_index]
-            
+
             print("Not device detected anymore: ")
             self.print_device_info(device_name)
 
@@ -317,12 +321,12 @@ class triad_openvr():
 
         if device_type == "Tracking Reference":
             print("  "+device_name+" ("+self.devices[device_name].get_serial() +
-                    ", Mode "+self.devices[device_name].get_model() +
-                    ", "+self.devices[device_name].get_model() +
-                    ")")
+                  ", Mode "+self.devices[device_name].get_model() +
+                  ", "+self.devices[device_name].get_model() +
+                  ")")
         else:
             print("  "+device_name+" ("+self.devices[device_name].get_serial() +
-                    ", "+self.devices[device_name].get_model()+")")
+                  ", "+self.devices[device_name].get_model()+")")
 
     def print_discovered_objects(self):
         for device_type in self.object_names:
