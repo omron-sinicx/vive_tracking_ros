@@ -88,8 +88,13 @@ class TeleoperationBase:
 
         self.tracking_mode = rospy.get_param('~tracking_mode', "controller_pose")
 
+        self.visualization_only = rospy.get_param('~visualization_only', False)
+
         if self.tracking_mode not in ('controller_pose', 'controller_twist'):
             raise ValueError(f'Invalid tracking mode "{self.tracking_mode}". Valid modes are: [controller_pose, controller_twist]')
+        
+        rospy.loginfo(f"Teleoperation mode: {self.tracking_mode}")
+        rospy.loginfo(f"Teleoperation visualization only: {self.visualization_only}")
 
     def get_transformation(self, source, target):
         try:
@@ -154,7 +159,8 @@ class TeleoperationBase:
         self.target_orientation = math_utils.rotate_quaternion_by_rpy(*delta_rotation, self.robot_center_orientation)
 
         self.broadcast_pose_to_tf()
-        # self.publish_target_pose()
+        if not self.visualization_only:
+            self.publish_target_pose()
 
     def vive_twist_cb(self, data: TwistStamped):
         """ Numerically integrate twist message into a pose
@@ -206,7 +212,8 @@ class TeleoperationBase:
             self.target_orientation = next_orientation
 
         self.broadcast_pose_to_tf()
-        # self.publish_target_pose()
+        if not self.visualization_only:
+            self.publish_target_pose()
 
     def vive_joy_cb(self, data: Joy):
         app_menu_button = data.buttons[0]
@@ -275,7 +282,7 @@ class TeleoperationBase:
 
         t.header.stamp = rospy.Time.now()
         t.header.frame_id = self.robot_frame
-        t.child_frame_id = "vr_target_pose"
+        t.child_frame_id = self.robot_ns + "_vr_target_pose"
         t.transform.translation = conversions.to_point(self.target_position)
         t.transform.rotation = conversions.to_quaternion(self.target_orientation)
 
