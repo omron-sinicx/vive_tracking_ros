@@ -2,7 +2,7 @@
 <launch>
 
     <!-- Numerically integrate twists into a pose -->
-    <node name="vive" pkg="vive_tracking_ros" type="track_controller.py" output="screen">
+    <node name="vive" pkg="vive_tracking_ros" type="track_controllers.py" output="screen">
         <param name="config_file" value="$(find vive_tracking_ros)/config/vive_config.yaml" />
         <param name="publishing_rate" value="500" type="int" />
     </node>
