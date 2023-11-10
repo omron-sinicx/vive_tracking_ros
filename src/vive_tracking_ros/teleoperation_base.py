@@ -133,7 +133,7 @@ class TeleoperationBase:
         controller_orientation = conversions.from_quaternion(data.pose.orientation)
 
         delta_translation = controller_position - self.controller_center_position
-        delta_rotation = math_utils.quaternions_orientation_error(controller_orientation, self.controller_center_orientation)
+        delta_rotation = math_utils.quaternions_orientation_error(controller_orientation, self.controller_center_orientation)*2
         if self.world_frame: # Rotate to a common frame of reference before applying delta
             delta_translation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_translation)
             delta_rotation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_rotation)
