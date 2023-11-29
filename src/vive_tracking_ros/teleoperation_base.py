@@ -29,6 +29,7 @@ class TeleoperationBase:
         self.tf_buffer = tf2_ros.Buffer(cache_time=rospy.Duration(3.0))
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
+        self.last_tf_stamp = rospy.get_rostime()
 
         self.vive_to_robot_rotation = conversions.from_quaternion(self.get_transformation(source=self.vive_base_frame, target=self.robot_frame).transform.rotation)
         if self.world_frame:
@@ -277,6 +278,9 @@ class TeleoperationBase:
                 pass
 
     def broadcast_pose_to_tf(self):
+        if self.last_tf_stamp == rospy.Time.now():
+            rospy.logdebug("Ignoring request to publish TF, not enough time has passed.")
+            return
 
         t = TransformStamped()
 
@@ -287,3 +291,5 @@ class TeleoperationBase:
         t.transform.rotation = conversions.to_quaternion(self.target_orientation)
 
         self.tf_broadcaster.sendTransform(t)
+
+        self.last_tf_stamp = t.header.stamp
