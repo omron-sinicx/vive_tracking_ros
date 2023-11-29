@@ -101,10 +101,12 @@ class ViveTrackingROS():
 
         inputs_msg = sensor_msgs.msg.Joy()
 
+        trigger_pose = np.interp(controller_inputs['trigger'], [0.25, 0.85], [0.0, 1.0])
+
         inputs_msg.buttons = [
             int(controller_inputs['menu_button']),
             int(controller_inputs['trackpad_pressed']),
-            int(controller_inputs['trigger']*100),
+            int(trigger_pose*100),
             int(controller_inputs['grip_button']),
         ]
 
