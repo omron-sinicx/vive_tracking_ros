@@ -12,8 +12,6 @@ from vive_tracking_ros.msg import ViveControllerFeedback
 import tf2_ros
 import sys
 
-import tf
-
 from vive_tracking_ros import conversions, math_utils
 
 
@@ -45,7 +43,7 @@ class TeleoperationBase:
 
         self.enable_tracking = False
 
-        # Start where we are
+        # Set the intial target pose to the current pose
         if not self.center_target_pose():
             rospy.logerr("Fail to get robot's end-effector pose")
             sys.exit(0)
@@ -57,14 +55,21 @@ class TeleoperationBase:
         vive_pose_topic = '/vive/' + self.controller_name + '/pose'
         vive_joy_topic = '/vive/' + self.controller_name + '/joy'
 
+        # Publishers
         self.target_pose_pub = rospy.Publisher(pose_topic, PoseStamped, queue_size=3)
-        self.vive_twist_sub = rospy.Subscriber(vive_twist_topic, TwistStamped, self.vive_twist_cb, queue_size=1)
-        self.vive_pose_sub = rospy.Subscriber(vive_pose_topic, PoseStamped, self.vive_pose_cb, queue_size=1)
-        self.joy_inputs_sub = rospy.Subscriber(vive_joy_topic, Joy, self.vive_joy_cb, queue_size=1)
-
         self.haptic_feedback_rate = rospy.Rate(10)
         self.haptic_feedback_pub = rospy.Publisher(haptic_feedback_topic, ViveControllerFeedback, queue_size=3)
-        self.wrench_sub = rospy.Subscriber(wrench_topic, WrenchStamped, self.wrench_cb, queue_size=1)
+
+        # Subscribers
+        if self.tracking_mode == "controller_pose":
+            rospy.Subscriber(vive_twist_topic, TwistStamped, self.vive_twist_cb, queue_size=1)
+        elif self.tracking_mode == "controller_twist":
+            rospy.Subscriber(vive_pose_topic, PoseStamped, self.vive_pose_cb, queue_size=1)
+        else:
+            raise ValueError(f'Invalid tracking mode "{self.tracking_mode}". Valid modes are: [controller_pose, controller_twist]')
+
+        rospy.Subscriber(vive_joy_topic, Joy, self.vive_joy_cb, queue_size=1)
+        rospy.Subscriber(wrench_topic, WrenchStamped, self.wrench_cb, queue_size=1)
 
     def load_params(self):
         self.robot_ns = rospy.get_param('~robot_namespace', default="")
@@ -92,7 +97,7 @@ class TeleoperationBase:
 
         if self.tracking_mode not in ('controller_pose', 'controller_twist'):
             raise ValueError(f'Invalid tracking mode "{self.tracking_mode}". Valid modes are: [controller_pose, controller_twist]')
-        
+
         rospy.loginfo(f"Teleoperation mode: {self.tracking_mode}")
         rospy.loginfo(f"Teleoperation visualization only: {self.visualization_only}")
 
@@ -128,8 +133,6 @@ class TeleoperationBase:
         return True
 
     def vive_pose_cb(self, data: PoseStamped):
-        if self.tracking_mode != "controller_pose":
-            return
 
         if not self.enable_tracking:
             return
@@ -139,7 +142,7 @@ class TeleoperationBase:
 
         delta_translation = controller_position - self.controller_center_position
         delta_rotation = math_utils.quaternions_orientation_error(controller_orientation, self.controller_center_orientation)*2
-        if self.world_frame: # Rotate to a common frame of reference before applying delta
+        if self.world_frame:  # Rotate to a common frame of reference before applying delta
             delta_translation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_translation)
             delta_rotation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_rotation)
 
@@ -167,9 +170,6 @@ class TeleoperationBase:
 
         Use global self.frame_id as reference for the navigation commands.
         """
-
-        if self.tracking_mode != "controller_twist":
-            return
 
         if not self.enable_tracking:
             return
