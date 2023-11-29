@@ -1,8 +1,10 @@
 #!/bin/env python
+import openvr
 from math import tau
 import numpy as np
 import rospy
 import tf2_ros
+import threading
 
 import geometry_msgs.msg
 import sensor_msgs.msg
@@ -37,18 +39,20 @@ class ViveTrackingROS():
         update_devices_interval = 5  # seconds
         update_devices_start_time = rospy.get_time()
 
+        controller_input_thread = threading.Thread(target=self.wait_for_controller_events)
+        controller_input_thread.start()
+
         while not rospy.is_shutdown():
 
             # Check for new controllers, remove disconnected ones
             if (rospy.get_time() - update_devices_start_time) > update_devices_interval:
-                update_devices_start_time = rospy.get_time()
                 self.vr.poll_vr_events()
+                update_devices_start_time = rospy.get_time()
 
             detected_controllers = self.vr.object_names["Controller"]
 
             for device_name in detected_controllers:
                 self.publish_twist(device_name)
-                self.publish_controller_input(device_name)
 
                 pose = self.compute_device_pose(device_name)
                 if pose:
@@ -57,6 +61,38 @@ class ViveTrackingROS():
 
             # publishing rate
             self.pub_rate.sleep()
+
+        controller_input_thread.join()
+
+    def wait_for_controller_events(self):
+        """
+            Listen for controller input events.
+            Only publish the controller state when an event is received. 
+            If the trigger or touch_pad is being pressed, publish the controller state continuously.
+        """
+        controller_map = {}
+
+        while not rospy.is_shutdown():
+            event = openvr.VREvent_t()
+
+            while self.vr.vrsystem.pollNextEvent(event):
+                if event.eventType == openvr.VREvent_ButtonPress:
+                    # print("button pressed", event.trackedDeviceIndex, event.data.controller.button)
+                    self.publish_controller_input(self.vr.device_index_map[event.trackedDeviceIndex])
+                    if event.data.controller.button == 33 or event.data.controller.button == 32:
+                        controller_map[event.trackedDeviceIndex] = {event.data.controller.button: True}
+
+                if event.eventType == openvr.VREvent_ButtonUnpress:
+                    # print("button unpressed", event.trackedDeviceIndex, event.data.controller.button)
+                    controller_map[event.trackedDeviceIndex] = {event.data.controller.button: False}
+
+            self.pub_rate.sleep()
+
+            # Keep publishing the controller status if the button pressed is the Trigger or the touchpad
+            for controller_id, buttons in controller_map.items():
+                for button_status in buttons.values():
+                    if button_status:
+                        self.publish_controller_input(self.vr.device_index_map[controller_id])
 
     def publish_controller_input(self, device_name):
         button_state_topic = self.topic_map.get(device_name, rospy.Publisher("/vive/" + device_name + "/joy", sensor_msgs.msg.Joy, queue_size=10))
@@ -113,7 +149,7 @@ class ViveTrackingROS():
 
         pose[:3] = math_utils.quaternion_rotate_vector(rotation, pose[:3])
         pose[3:] = math_utils.normalize_quaternion(math_utils.quaternion_multiply(rotation, pose[3:]))
-        
+
         return pose
 
     def publish_controller_pose(self, device_name, pose):  # relative to the base stations
