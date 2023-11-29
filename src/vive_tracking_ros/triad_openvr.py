@@ -268,6 +268,7 @@ class triad_openvr():
                 device_name = device['name']
                 self.object_names[device['type']].append(device_name)
                 self.devices[device_name] = vr_tracked_device(self.vr, i, device['type'])
+                self.device_index_map[i] = device_name
                 known_device_found = True
 
         if not known_device_found:
