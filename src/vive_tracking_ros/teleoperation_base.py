@@ -3,15 +3,16 @@
 import math
 import numpy as np
 import rospy
+import threading
 from geometry_msgs.msg import TwistStamped
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import WrenchStamped
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Joy
-from vive_tracking_ros.msg import ViveControllerFeedback
 import tf2_ros
 import sys
 
+from vive_tracking_ros.msg import ViveControllerFeedback
 from vive_tracking_ros import conversions, math_utils
 
 
@@ -42,7 +43,10 @@ class TeleoperationBase:
         self.controller_center_position = np.zeros(3)
         self.controller_center_orientation = np.array([0, 0, 0, 1])
 
-        self.enable_tracking = False
+        self.enable_teleoperation_condition = threading.Condition()
+        self.enable_teleoperation = False
+
+        self.enable_controller_inputs = True
 
         # Set the intial target pose to the current pose
         if not self.center_target_pose():
@@ -63,9 +67,9 @@ class TeleoperationBase:
 
         # Subscribers
         if self.tracking_mode == "controller_pose":
-            rospy.Subscriber(vive_twist_topic, TwistStamped, self.vive_twist_cb, queue_size=1)
-        elif self.tracking_mode == "controller_twist":
             rospy.Subscriber(vive_pose_topic, PoseStamped, self.vive_pose_cb, queue_size=1)
+        elif self.tracking_mode == "controller_twist":
+            rospy.Subscriber(vive_twist_topic, TwistStamped, self.vive_twist_cb, queue_size=1)
         else:
             raise ValueError(f'Invalid tracking mode "{self.tracking_mode}". Valid modes are: [controller_pose, controller_twist]')
 
@@ -135,7 +139,7 @@ class TeleoperationBase:
 
     def vive_pose_cb(self, data: PoseStamped):
 
-        if not self.enable_tracking:
+        if not self.enable_teleoperation:
             return
 
         controller_position = conversions.from_point(data.pose.position)
@@ -163,8 +167,6 @@ class TeleoperationBase:
         self.target_orientation = math_utils.rotate_quaternion_by_rpy(*delta_rotation, self.robot_center_orientation)
 
         self.broadcast_pose_to_tf()
-        if not self.visualization_only:
-            self.publish_target_pose()
 
     def vive_twist_cb(self, data: TwistStamped):
         """ Numerically integrate twist message into a pose
@@ -172,7 +174,7 @@ class TeleoperationBase:
         Use global self.frame_id as reference for the navigation commands.
         """
 
-        if not self.enable_tracking:
+        if not self.enable_teleoperation:
             return
 
         now = rospy.get_time()
@@ -213,10 +215,11 @@ class TeleoperationBase:
             self.target_orientation = next_orientation
 
         self.broadcast_pose_to_tf()
-        if not self.visualization_only:
-            self.publish_target_pose()
 
     def vive_joy_cb(self, data: Joy):
+        if not self.enable_controller_inputs:
+            return
+
         app_menu_button = data.buttons[0]
 
         if app_menu_button:
@@ -225,19 +228,21 @@ class TeleoperationBase:
                 sys.exit(0)
 
             # Enable/Disable tracking
-            self.set_tracking(enable=(not self.enable_tracking))
+            self.set_teleoperation_status(enable=(not self.enable_teleoperation))
 
             rospy.sleep(0.5)
 
-    def set_tracking(self, enable=True):
-        self.enable_tracking = enable
-        if self.enable_tracking:
-            rospy.loginfo("=== Tracking Enabled  ===")
-        else:
-            rospy.loginfo("=== Tracking Disabled ===")
+    def set_teleoperation_status(self, enable=True):
+        with self.enable_teleoperation_condition:
+            self.enable_teleoperation = enable
+            if self.enable_teleoperation:
+                rospy.loginfo("=== Tracking Enabled  ===")
+            else:
+                rospy.loginfo("=== Tracking Disabled ===")
+            self.enable_teleoperation_condition.notify_all()
 
     def wrench_cb(self, data: WrenchStamped):
-        if not self.enable_tracking:
+        if not self.enable_teleoperation:
             return
 
         wrench = conversions.from_wrench(data.wrench)
@@ -257,16 +262,16 @@ class TeleoperationBase:
             self.haptic_feedback_rate.sleep()
 
         if np.any(np.abs(wrench) > self.max_force_torque):
-            self.enable_tracking = False
+            self.enable_teleoperation = False
             rospy.logwarn("Tracking stopped, excessive contact force detected: %s" % (np.round(wrench, 1)))
 
-    def publish_target_pose(self):
+    def publish_target_pose(self, target_position, target_orientation):
         if not rospy.is_shutdown():
             msg = PoseStamped()
             msg.header.stamp = rospy.Time.now()
             msg.header.frame_id = self.robot_frame
-            msg.pose.position = conversions.to_point(self.target_position)
-            msg.pose.orientation = conversions.to_quaternion(self.target_orientation)
+            msg.pose.position = conversions.to_point(target_position)
+            msg.pose.orientation = conversions.to_quaternion(target_orientation)
 
             # rospy.loginfo_throttle(1, msg)
 
