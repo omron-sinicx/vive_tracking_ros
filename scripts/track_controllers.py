@@ -37,18 +37,10 @@ class ViveTrackingROS():
 
     def run(self):
 
-        update_devices_interval = 5  # seconds
-        update_devices_start_time = rospy.get_time()
-
         controller_input_thread = threading.Thread(target=self.wait_for_controller_events)
         controller_input_thread.start()
 
         while not rospy.is_shutdown():
-
-            # Check for new controllers, remove disconnected ones
-            if (rospy.get_time() - update_devices_start_time) > update_devices_interval:
-                self.vr.poll_vr_events()
-                update_devices_start_time = rospy.get_time()
 
             detected_controllers = self.vr.object_names["Controller"]
 
@@ -73,8 +65,8 @@ class ViveTrackingROS():
         """
         controller_map = {}
 
+        event = openvr.VREvent_t()
         while not rospy.is_shutdown():
-            event = openvr.VREvent_t()
 
             while self.vr.vrsystem.pollNextEvent(event):
                 if event.eventType == openvr.VREvent_ButtonPress:
@@ -86,6 +78,15 @@ class ViveTrackingROS():
                 if event.eventType == openvr.VREvent_ButtonUnpress:
                     # print("button unpressed", event.trackedDeviceIndex, event.data.controller.button)
                     controller_map[event.trackedDeviceIndex] = {event.data.controller.button: False}
+
+                # Include events related to new devices been activated or deactivated
+                # to automatically add/remove them to the pool of devices
+                if event.eventType == openvr.VREvent_TrackedDeviceActivated:
+                    self.vr.add_tracked_device(event.trackedDeviceIndex)
+                elif event.eventType == openvr.VREvent_TrackedDeviceDeactivated:
+                    # If we were already tracking this device, quit tracking it.
+                    if event.trackedDeviceIndex in self.vr.device_index_map:
+                        self.vr.remove_tracked_device(event.trackedDeviceIndex)
 
             self.pub_rate.sleep()
 

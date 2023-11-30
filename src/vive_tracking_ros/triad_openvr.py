@@ -244,19 +244,6 @@ class triad_openvr():
     def get_pose(self):
         return get_pose(self.vr)
 
-    def poll_vr_events(self):
-        """
-        Used to poll VR events and find any new tracked devices or ones that are no longer tracked.
-        """
-        event = openvr.VREvent_t()
-        while self.vrsystem.pollNextEvent(event):
-            if event.eventType == openvr.VREvent_TrackedDeviceActivated:
-                self.add_tracked_device(event.trackedDeviceIndex)
-            elif event.eventType == openvr.VREvent_TrackedDeviceDeactivated:
-                # If we were already tracking this device, quit tracking it.
-                if event.trackedDeviceIndex in self.device_index_map:
-                    self.remove_tracked_device(event.trackedDeviceIndex)
-
     def add_tracked_device(self, tracked_device_index, verbose=True):
         i = tracked_device_index
         device_serial = self.vr.getStringTrackedDeviceProperty(i, openvr.Prop_SerialNumber_String)
@@ -302,7 +289,7 @@ class triad_openvr():
         if tracked_device_index in self.device_index_map:
             device_name = self.device_index_map[tracked_device_index]
 
-            print("Not device detected anymore: ")
+            print("Device not detected anymore: ")
             self.print_device_info(device_name)
 
             self.object_names[self.devices[device_name].device_class].remove(device_name)
