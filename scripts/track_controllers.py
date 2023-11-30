@@ -31,6 +31,7 @@ class ViveTrackingROS():
         self.pub_rate = rospy.Rate(publishing_rate)
 
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
+        self.last_tf_stamp_dict = {}
 
         self.vr.print_discovered_objects()
 
@@ -167,6 +168,10 @@ class ViveTrackingROS():
         pose_topic.publish(pose_msg)
 
     def broadcast_pose_to_tf(self, device_name, pose):
+        if device_name in self.last_tf_stamp_dict and self.last_tf_stamp_dict[device_name] == rospy.Time.now():
+            rospy.logerr("Ignoring request to publish TF, not enough time has passed.")
+            return
+
         t = geometry_msgs.msg.TransformStamped()
 
         t.header.stamp = rospy.Time.now()
@@ -176,6 +181,7 @@ class ViveTrackingROS():
         t.transform.rotation = conversions.to_quaternion(pose[3:])
 
         self.tf_broadcaster.sendTransform(t)
+        self.last_tf_stamp_dict[device_name] = rospy.get_rostime().to_sec()
 
     def haptic_feedback(self, msg: vive_tracking_ros.msg.ViveControllerFeedback):
         device = self.vr.devices.get(msg.controller_name, None)
