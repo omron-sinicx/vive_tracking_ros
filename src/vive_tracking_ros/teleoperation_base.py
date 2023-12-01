@@ -18,11 +18,17 @@ from vive_tracking_ros import conversions, math_utils
 
 
 class TeleoperationBase:
-    """ Convert Twist messages to PoseStamped
+    """ Teleoperation with VR HTC controllers
 
-    Use this node to integrate twist messages into a moving target pose in
-    Cartesian space.  An initial TF lookup assures that the target pose always
-    starts at the robot's end-effector.
+    Two control modes:
+        Twist-based: follow the relative trajectory defined by the controllers reported twist
+        Pose-based: follow the relative trajectory defined by the estimated pose of the controller
+
+    In both case, the trajectory is relative to a *center pose* of the robot. The center pose
+    is define as the position of the robot's end effector when the teleoperation is (re)started.
+
+    For visualization, the TF pose of the controller(s) and the target pose are published.
+
     """
 
     def __init__(self):

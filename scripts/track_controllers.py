@@ -17,6 +17,11 @@ from vive_tracking_ros.triad_openvr import triad_openvr
 
 
 class ViveTrackingROS():
+    """
+        Use this node to publish the pose and twist tracked from VR controllers using openVR.
+        The controller inputs are also published as sensor_msgs.msg.Joy messages
+    """
+
     def __init__(self) -> None:
         rospy.init_node("vive_tracking_ros")
 
