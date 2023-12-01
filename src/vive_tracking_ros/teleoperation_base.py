@@ -11,6 +11,7 @@ from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Joy
 import tf2_ros
 import sys
+from ur_control import spalg
 
 from vive_tracking_ros.msg import ViveControllerFeedback
 from vive_tracking_ros import conversions, math_utils
@@ -62,7 +63,7 @@ class TeleoperationBase:
 
         # Publishers
         self.target_pose_pub = rospy.Publisher(pose_topic, PoseStamped, queue_size=3)
-        self.haptic_feedback_rate = rospy.Rate(10)
+        self.haptic_feedback_last_stamp = rospy.get_time()
         self.haptic_feedback_pub = rospy.Publisher(haptic_feedback_topic, ViveControllerFeedback, queue_size=3)
 
         # Subscribers
@@ -73,25 +74,29 @@ class TeleoperationBase:
         else:
             raise ValueError(f'Invalid tracking mode "{self.tracking_mode}". Valid modes are: [controller_pose, controller_twist]')
 
+        if self.sensor_frame != self.end_effector_frame:
+            sensor2eef_transform = self.get_transformation(self.sensor_frame, self.end_effector_frame)
+            self.sensor2eef_traslation = conversions.from_point(sensor2eef_transform.transform.translation)
+
         rospy.Subscriber(vive_joy_topic, Joy, self.vive_joy_cb, queue_size=1)
         rospy.Subscriber(wrench_topic, WrenchStamped, self.wrench_cb, queue_size=1)
 
     def load_params(self):
         self.robot_ns = rospy.get_param('~robot_namespace', default="")
         self.robot_frame = rospy.get_param('~robot_base_link', default="base_link")
-        self.end_effector = rospy.get_param('~robot_end_effector_link', default="tool0")
+        self.end_effector_frame = rospy.get_param('~robot_end_effector_link', default="tool0")
+        self.sensor_frame = rospy.get_param('~sensor_link', default=self.end_effector_frame)
         self.world_frame = rospy.get_param('~world_frame', default=None)
 
         self.vive_base_frame = rospy.get_param('~vive_frame_id', default="world")
         self.controller_name = rospy.get_param('~controller_name', default="right_controller")
 
         # Limit the displacement to the play area
-        # Todo limit rotation
         self.play_area = rospy.get_param('~play_area', [0.05, 0.05, 0.05, 15, 15, 15])
         self.play_area[3:] = np.deg2rad(self.play_area[3:])
+
         # Limit contact interaction
         self.max_force_torque = rospy.get_param('~max_contact_force_torque', default=[50., 50., 50., 5., 5., 5.])
-        self.min_force_torque = rospy.get_param('~min_contact_force_torque', default=[3., 3., 3., 0.1, 0.1, 0.5])
 
         self.scale_velocities = rospy.get_param('~scale_velocities', [1., 1., 1., 1., 1., 1.])
         self.scale_velocities = np.clip(self.scale_velocities, 0.0, 1.0)
@@ -117,7 +122,7 @@ class TeleoperationBase:
             return False
 
     def center_target_pose(self):
-        robot_current_pose = self.get_transformation(source=self.end_effector, target=self.robot_frame)
+        robot_current_pose = self.get_transformation(source=self.end_effector_frame, target=self.robot_frame)
         controller_current_pose = self.get_transformation(source=self.controller_name, target="vive_world")
 
         if not robot_current_pose or not controller_current_pose:
@@ -245,21 +250,29 @@ class TeleoperationBase:
         if not self.enable_teleoperation:
             return
 
+        # Only uses the sum of forces, so the orientation is irrelevant
         wrench = conversions.from_wrench(data.wrench)
-        wrench_clipped = np.array([max(0.0, np.abs(wrench[i]) - self.min_force_torque[i]) for i in range(6)])
-        normalized_wrench = wrench_clipped / self.max_force_torque
-        intensity = np.linalg.norm(normalized_wrench)
 
-        if np.any(np.abs(wrench) > self.min_force_torque):
+        if self.sensor_frame != self.end_effector_frame:
+            forces = wrench[:3] + spalg.sensor_torque_to_tcp_force(sensor_torques=wrench[3:], tcp_position=self.sensor2eef_traslation)
+        else:
+            forces = wrench[:3]
+
+        total_force = np.sum(np.abs(forces))
+
+        force_sensitivity = [3.0, 50.0]  # Min and Max force to map to vibration intensity
+
+        if total_force > force_sensitivity[0] \
+                and rospy.get_time() - self.haptic_feedback_last_stamp > 0.075:  # Avoid sending too many haptic commands
+
             haptic_msg = ViveControllerFeedback()
             haptic_msg.controller_name = self.controller_name
-            haptic_msg.duration_microsecs = np.interp(intensity, [0.0, 1.0], [0.0, 2000.0])
+            haptic_msg.duration_microsecs = np.interp(total_force, force_sensitivity, [0.0, 3999.0])
+
+            # rospy.loginfo(f"{round(haptic_msg.duration_microsecs, 2)} {np.round(total_force, 1)}")
 
             self.haptic_feedback_pub.publish(haptic_msg)
-
-            # rospy.loginfo("%s %s" % (np.round(wrench, 1), round(haptic_msg.duration_microsecs, 2)))
-
-            self.haptic_feedback_rate.sleep()
+            self.haptic_feedback_last_stamp = rospy.get_time()
 
         if np.any(np.abs(wrench) > self.max_force_torque):
             self.enable_teleoperation = False
