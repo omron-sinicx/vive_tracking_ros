@@ -13,7 +13,7 @@ import tf2_ros
 import sys
 from ur_control import spalg
 
-from vive_tracking_ros.msg import ViveControllerFeedback
+from vive_tracking_ros.msg import ControllerHapticCommand
 from vive_tracking_ros import conversions, math_utils
 
 
@@ -70,7 +70,7 @@ class TeleoperationBase:
         # Publishers
         self.target_pose_pub = rospy.Publisher(pose_topic, PoseStamped, queue_size=3)
         self.haptic_feedback_last_stamp = rospy.get_time()
-        self.haptic_feedback_pub = rospy.Publisher(haptic_feedback_topic, ViveControllerFeedback, queue_size=3)
+        self.haptic_feedback_pub = rospy.Publisher(haptic_feedback_topic, ControllerHapticCommand, queue_size=3)
 
         # Subscribers
         if self.tracking_mode == "controller_pose":
@@ -132,7 +132,7 @@ class TeleoperationBase:
         controller_current_pose = self.get_transformation(source=self.controller_name, target="vive_world")
 
         if not robot_current_pose or not controller_current_pose:
-            rospy.logwarn("Failed to get transformation")
+            rospy.logwarn("Failed to get transformation from robot current pose")
             return False
 
         self.target_position = conversions.from_point(robot_current_pose.transform.translation)
@@ -271,7 +271,7 @@ class TeleoperationBase:
         if total_force > force_sensitivity[0] \
                 and rospy.get_time() - self.haptic_feedback_last_stamp > 0.075:  # Avoid sending too many haptic commands
 
-            haptic_msg = ViveControllerFeedback()
+            haptic_msg = ControllerHapticCommand()
             haptic_msg.controller_name = self.controller_name
             haptic_msg.duration_microsecs = np.interp(total_force, force_sensitivity, [0.0, 3999.0])
 

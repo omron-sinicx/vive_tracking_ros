@@ -30,7 +30,7 @@ class ViveTrackingROS():
         self.vr = triad_openvr(configfile_path=config_file)
 
         self.topic_map = {}
-        self.haptic_feedback_sub = rospy.Subscriber("/vive/set_feedback", vive_tracking_ros.msg.ViveControllerFeedback, self.haptic_feedback)
+        self.haptic_feedback_sub = rospy.Subscriber("/vive/set_feedback", vive_tracking_ros.msg.ControllerHapticCommand, self.haptic_feedback)
 
         publishing_rate = int(rospy.get_param("~publishing_rate", 100))
         self.pub_rate = rospy.Rate(publishing_rate)
@@ -189,7 +189,7 @@ class ViveTrackingROS():
         self.tf_broadcaster.sendTransform(t)
         self.last_tf_stamp_dict[device_name] = rospy.get_rostime().to_sec()
 
-    def haptic_feedback(self, msg: vive_tracking_ros.msg.ViveControllerFeedback):
+    def haptic_feedback(self, msg: vive_tracking_ros.msg.ControllerHapticCommand):
         device = self.vr.devices.get(msg.controller_name, None)
         if device:
             # Intensity assumed to be between 0 and 1 inclusive
