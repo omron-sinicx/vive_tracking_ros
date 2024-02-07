@@ -20,7 +20,7 @@ from vive_tracking_ros import conversions, math_utils
 
 
 class VRControllerPoseMapper:
-    """ Converter of VR HTC controllers to robot target poses
+    """ Converter of VR HTC controllers to the robot's end effector target poses and gripper pose
 
     Two control modes:
         Twist-based: follow the relative trajectory defined by the controllers reported twist
@@ -45,10 +45,13 @@ class VRControllerPoseMapper:
         self.robot_center_orientation = np.array([0, 0, 0, 1])
         self.controller_center_position = np.zeros(3)
         self.controller_center_orientation = np.array([0, 0, 0, 1])
+        self.target_gripper_pose = 0.0  # Fully open
 
         self.enable_controller_inputs = True
+        # when tracking is pause, the current pose of the robot is published as the target pose
+        self.pause_tracking = False
 
-        # Set the intial target pose to the current pose
+        # Set the initial target pose to the current pose
         if not self.center_target_pose():
             rospy.logerr("Fail to get robot's end-effector pose")
             sys.exit(0)
@@ -59,7 +62,6 @@ class VRControllerPoseMapper:
         haptic_feedback_topic = '/vive/set_feedback'
 
         # Publishers
-        self.target_pose_pub = rospy.Publisher(self.target_pose_topic, PoseStamped, queue_size=3)
         self.haptic_feedback_last_stamp = rospy.get_time()
         self.haptic_feedback_pub = rospy.Publisher(haptic_feedback_topic, ControllerHapticCommand, queue_size=3)
 
@@ -140,7 +142,7 @@ class VRControllerPoseMapper:
 
     def center_target_pose(self):
         """
-            The center 
+            Reset the reference position as the current pose of the robot's end effector
         """
         robot_current_pose = self.get_transformation(source=self.end_effector_frame, target=self.robot_frame)
         controller_current_pose = self.get_transformation(source=self.controller_name, target="vive_world")
@@ -152,8 +154,8 @@ class VRControllerPoseMapper:
         self.target_position = conversions.from_point(robot_current_pose.transform.translation)
         self.target_orientation = conversions.from_quaternion(robot_current_pose.transform.rotation)
 
-        self.robot_center_position = self.target_position
-        self.robot_center_orientation = self.target_orientation
+        self.robot_center_position = np.copy(self.target_position)
+        self.robot_center_orientation = np.copy(self.target_orientation)
 
         self.controller_center_position = conversions.from_point(controller_current_pose.transform.translation)
         self.controller_center_orientation = conversions.from_quaternion(controller_current_pose.transform.rotation)
@@ -165,18 +167,26 @@ class VRControllerPoseMapper:
             return
 
         app_menu_button = data.buttons[0]
+        trigger_button = data.buttons[2]
 
         if app_menu_button:
             # re-center the target pose
             if not self.center_target_pose():
                 sys.exit(0)
+            self.pause_tracking = not self.pause_tracking  # Pause/Resume tracking
 
             rospy.sleep(0.5)
+
+        if trigger_button:  # just track target pose for gripper
+            self.target_gripper_pose = max(0.0, 1.-trigger_button/100.0)  # In percentage
 
     def vive_pose_cb(self, data: PoseStamped):
         """
             Compute the target pose based on the absolute pose of the vive controller
         """
+        if self.pause_tracking:
+            return self.publish_robot_current_pose()
+
         controller_position = conversions.from_point(data.pose.position)
         controller_orientation = conversions.from_quaternion(data.pose.orientation)
 
@@ -208,6 +218,9 @@ class VRControllerPoseMapper:
 
         Use global self.frame_id as reference for the navigation commands.
         """
+        if self.pause_tracking:
+            return self.publish_robot_current_pose()
+
         if not hasattr(self, 'last'):
             self.last = rospy.get_time()
             return
@@ -250,6 +263,11 @@ class VRControllerPoseMapper:
             self.target_position = next_pose
             self.target_orientation = next_orientation
 
+        self.broadcast_pose_to_tf()
+
+    def publish_robot_current_pose(self):
+        self.target_position = np.copy(self.robot_center_position)
+        self.target_orientation = np.copy(self.robot_center_orientation)
         self.broadcast_pose_to_tf()
 
     def wrench_cb(self, data: WrenchStamped):
