@@ -45,7 +45,7 @@ class VRControllerPoseMapper:
         self.robot_center_orientation = np.array([0, 0, 0, 1])
         self.controller_center_position = np.zeros(3)
         self.controller_center_orientation = np.array([0, 0, 0, 1])
-        self.target_gripper_pose = 0.0  # Fully open
+        self.target_gripper_pose = 1.0  # Fully open
 
         self.enable_controller_inputs = True
         # when tracking is pause, the current pose of the robot is published as the target pose
@@ -53,7 +53,7 @@ class VRControllerPoseMapper:
 
         # Set the initial target pose to the current pose
         if not self.center_target_pose():
-            rospy.logerr("Fail to get robot's end-effector pose")
+            rospy.logerr("Fail to get robot's end-effector pose.\n Is the VR controller being tracked?")
             sys.exit(0)
 
         vive_twist_topic = '/vive/' + self.controller_name + '/twist'
