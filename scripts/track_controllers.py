@@ -102,9 +102,13 @@ class ViveTrackingROS():
                         self.publish_controller_input(self.vr.device_index_map[controller_id])
 
     def publish_controller_input(self, device_name):
+        device = self.vr.get_device(device_name)
+        if not device:
+            return
+
         button_state_topic = self.topic_map.get(device_name, rospy.Publisher("/vive/" + device_name + "/joy", sensor_msgs.msg.Joy, queue_size=10))
 
-        controller_inputs = self.vr.devices[device_name].get_controller_inputs()
+        controller_inputs = device.get_controller_inputs()
 
         inputs_msg = sensor_msgs.msg.Joy()
 
@@ -120,10 +124,14 @@ class ViveTrackingROS():
         button_state_topic.publish(inputs_msg)
 
     def publish_twist(self, device_name):
+        device = self.vr.get_device(device_name)
+        if not device:
+            return
+
         # Controller velocity
         # x and z - diagonals, y - up/down
-        linear_velocity = self.vr.devices[device_name].get_velocity()
-        angular_velocity = self.vr.devices[device_name].get_angular_velocity()
+        linear_velocity = device.get_velocity()
+        angular_velocity = device.get_angular_velocity()
 
         if linear_velocity is None or angular_velocity is None:
             return
@@ -146,8 +154,12 @@ class ViveTrackingROS():
         twist_topic.publish(twist_msg)
 
     def compute_device_pose(self, device_name):
+        device = self.vr.get_device(device_name)
+        if not device:
+            return
+
         # Get controller pose from openvr
-        pose = self.vr.devices[device_name].get_pose_quaternion()
+        pose = device.get_pose_quaternion()
 
         if pose is None:
             return False
@@ -190,11 +202,13 @@ class ViveTrackingROS():
         self.last_tf_stamp_dict[device_name] = rospy.get_rostime().to_sec()
 
     def haptic_feedback(self, msg: vive_tracking_ros.msg.ControllerHapticCommand):
-        device = self.vr.devices.get(msg.controller_name, None)
-        if device:
-            # Intensity assumed to be between 0 and 1 inclusive
-            duration_micros = int(np.clip(msg.duration_microsecs, 0.0, 3999.0))
-            device.trigger_haptic_pulse(duration_micros=duration_micros)
+        device = self.vr.get_device(msg.controller_name)
+        if not device:
+            return
+
+        # Intensity assumed to be between 0 and 1 inclusive
+        duration_micros = int(np.clip(msg.duration_microsecs, 0.0, 3999.0))
+        device.trigger_haptic_pulse(duration_micros=duration_micros)
 
 
 if __name__ == '__main__':

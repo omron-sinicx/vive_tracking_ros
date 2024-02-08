@@ -244,6 +244,9 @@ class triad_openvr():
     def get_pose(self):
         return get_pose(self.vr)
 
+    def get_device(self, device_name):
+        return self.devices.get(device_name, None)
+
     def add_tracked_device(self, tracked_device_index, verbose=True):
         i = tracked_device_index
         device_serial = self.vr.getStringTrackedDeviceProperty(i, openvr.Prop_SerialNumber_String)
