@@ -161,3 +161,16 @@ def is_unit_quaternion(q, tolerance=1e-6):
 
     # Check if the magnitude is close to 1 within the specified tolerance
     return np.isclose(magnitude, 1.0, rtol=tolerance)
+
+
+def axis_angle_from_quaternion(quat):
+    if quat[3] > 1.0:
+        quat[3] = 1.0
+    elif quat[3] < -1.0:
+        quat[3] = -1.0
+
+    den = np.sqrt(1.0 - quat[3] * quat[3])
+    if abs(den - 0.0) <= max(1e-09 * max(abs(den), 0.0), 0.0):
+        return np.zeros(3)
+
+    return (quat[:3] * 2.0 * math.acos(quat[3])) / den

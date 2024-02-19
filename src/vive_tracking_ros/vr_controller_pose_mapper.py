@@ -41,6 +41,7 @@ class VRControllerPoseMapper:
 
         self.target_position = np.zeros(3)
         self.target_orientation = np.array([0, 0, 0, 1])
+        self.target_orientation_axis_angles = np.array([0, 0, 0])
         self.robot_center_position = np.zeros(3)
         self.robot_center_orientation = np.array([0, 0, 0, 1])
         self.controller_center_position = np.zeros(3)
@@ -153,6 +154,7 @@ class VRControllerPoseMapper:
 
         self.target_position = conversions.from_point(robot_current_pose.transform.translation)
         self.target_orientation = conversions.from_quaternion(robot_current_pose.transform.rotation)
+        self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
 
         self.robot_center_position = np.copy(self.target_position)
         self.robot_center_orientation = np.copy(self.target_orientation)
@@ -210,6 +212,7 @@ class VRControllerPoseMapper:
 
         self.target_position = self.robot_center_position + delta_translation
         self.target_orientation = math_utils.rotate_quaternion_by_rpy(*delta_rotation, self.robot_center_orientation)
+        self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
 
         self.broadcast_pose_to_tf()
 
@@ -262,12 +265,14 @@ class VRControllerPoseMapper:
         else:
             self.target_position = next_pose
             self.target_orientation = next_orientation
+        self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
 
         self.broadcast_pose_to_tf()
 
     def publish_robot_current_pose(self):
         self.target_position = np.copy(self.robot_center_position)
         self.target_orientation = np.copy(self.robot_center_orientation)
+        self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
         self.broadcast_pose_to_tf()
 
     def wrench_cb(self, data: WrenchStamped):
