@@ -14,6 +14,9 @@ from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Joy
 
 from ur_control import spalg
+from ur_control.constants import JOINT_TRAJECTORY_CONTROLLER, get_arm_joint_names
+from ur_control.controllers import JointTrajectoryController
+from ur_pykdl import ur_kinematics
 
 from vive_tracking_ros.msg import ControllerHapticCommand
 from vive_tracking_ros import conversions, math_utils
@@ -44,6 +47,8 @@ class VRControllerPoseMapper:
         self.target_orientation_axis_angles = np.array([0, 0, 0])
         self.robot_center_position = np.zeros(3)
         self.robot_center_orientation = np.array([0, 0, 0, 1])
+        self.current_controller_position = np.zeros(3)
+        self.current_controller_orientation = np.array([0, 0, 0, 1])
         self.controller_center_position = np.zeros(3)
         self.controller_center_orientation = np.array([0, 0, 0, 1])
         self.target_gripper_pose = 1.0  # Fully open
@@ -51,6 +56,17 @@ class VRControllerPoseMapper:
         self.enable_controller_inputs = True
         # when tracking is pause, the current pose of the robot is published as the target pose
         self.pause_tracking = False
+
+        # self.arm = arm.Arm(namespace=self.robot_ns, gripper_type=None, joint_names_prefix=f'{self.robot_ns}_')
+        self.arm_controller = JointTrajectoryController(publisher_name=JOINT_TRAJECTORY_CONTROLLER,
+                                                        namespace=self.robot_ns,
+                                                        joint_names=get_arm_joint_names(f'{self.robot_ns}_'),
+                                                        timeout=1.0)
+
+        if rospy.has_param("robot_description"):
+            self.kdl = ur_kinematics(base_link=self.robot_frame, ee_link=self.end_effector_frame)
+        else:
+            raise ValueError("robot_description not found in the parameter server")
 
         # Set the initial target pose to the current pose
         if not self.center_target_pose():
@@ -145,22 +161,18 @@ class VRControllerPoseMapper:
         """
             Reset the reference position as the current pose of the robot's end effector
         """
-        robot_current_pose = self.get_transformation(source=self.end_effector_frame, target=self.robot_frame)
-        controller_current_pose = self.get_transformation(source=self.controller_name, target="vive_world")
 
-        if not robot_current_pose or not controller_current_pose:
-            rospy.logwarn("Failed to get transformation from robot current pose")
-            return False
+        robot_current_pose = self.kdl.forward(self.arm_controller.get_joint_positions())
 
-        self.target_position = conversions.from_point(robot_current_pose.transform.translation)
-        self.target_orientation = conversions.from_quaternion(robot_current_pose.transform.rotation)
+        self.target_position = robot_current_pose[:3]
+        self.target_orientation = robot_current_pose[3:]
         self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
 
         self.robot_center_position = np.copy(self.target_position)
         self.robot_center_orientation = np.copy(self.target_orientation)
 
-        self.controller_center_position = conversions.from_point(controller_current_pose.transform.translation)
-        self.controller_center_orientation = conversions.from_quaternion(controller_current_pose.transform.rotation)
+        self.controller_center_position = np.copy(self.current_controller_position)
+        self.controller_center_orientation = np.copy(self.current_controller_orientation)
 
         return True
 
@@ -186,14 +198,14 @@ class VRControllerPoseMapper:
         """
             Compute the target pose based on the absolute pose of the vive controller
         """
+        self.current_controller_position = conversions.from_point(data.pose.position)
+        self.current_controller_orientation = conversions.from_quaternion(data.pose.orientation)
+
         if self.pause_tracking:
             return self.publish_robot_current_pose()
 
-        controller_position = conversions.from_point(data.pose.position)
-        controller_orientation = conversions.from_quaternion(data.pose.orientation)
-
-        delta_translation = controller_position - self.controller_center_position
-        delta_rotation = math_utils.quaternions_orientation_error(controller_orientation, self.controller_center_orientation)*2
+        delta_translation = self.current_controller_position - self.controller_center_position
+        delta_rotation = math_utils.quaternions_orientation_error(self.current_controller_orientation, self.controller_center_orientation)*2
         if self.world_frame:  # Rotate to a common frame of reference before applying delta
             delta_translation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_translation)
             delta_rotation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_rotation)
@@ -270,8 +282,8 @@ class VRControllerPoseMapper:
         self.broadcast_pose_to_tf()
 
     def publish_robot_current_pose(self):
-        self.target_position = np.copy(self.robot_center_position)
-        self.target_orientation = np.copy(self.robot_center_orientation)
+        self.target_position = self.robot_center_position
+        self.target_orientation = self.robot_center_orientation
         self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
         self.broadcast_pose_to_tf()
 

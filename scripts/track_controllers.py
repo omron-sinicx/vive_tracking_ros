@@ -35,6 +35,9 @@ class ViveTrackingROS():
         publishing_rate = int(rospy.get_param("~publishing_rate", 100))
         self.pub_rate = rospy.Rate(publishing_rate)
 
+        device_events_rate = int(rospy.get_param("~device_events_rate", 1000))
+        self.dev_pub_rate = rospy.Rate(device_events_rate)
+
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
         self.last_tf_stamp_dict = {}
 
@@ -93,7 +96,7 @@ class ViveTrackingROS():
                     if event.trackedDeviceIndex in self.vr.device_index_map:
                         self.vr.remove_tracked_device(event.trackedDeviceIndex)
 
-            self.pub_rate.sleep()
+            self.dev_pub_rate.sleep()
 
             # Keep publishing the controller status if the button pressed is the Trigger or the touchpad
             for controller_id, buttons in controller_map.items():
