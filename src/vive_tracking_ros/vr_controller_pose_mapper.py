@@ -56,6 +56,10 @@ class VRControllerPoseMapper:
         self.enable_controller_inputs = True
         # when tracking is pause, the current pose of the robot is published as the target pose
         self.pause_tracking = False
+        self.last_reset_stamp = 0.0 
+
+        self.grip_button_switch = False # information only 
+        self.last_grip_button_switch_stamp = 0.0
 
         # self.arm = arm.Arm(namespace=self.robot_ns, gripper_type=None, joint_names_prefix=f'{self.robot_ns}_')
         self.arm_controller = JointTrajectoryController(publisher_name=JOINT_TRAJECTORY_CONTROLLER,
@@ -182,14 +186,22 @@ class VRControllerPoseMapper:
 
         app_menu_button = data.buttons[0]
         trigger_button = data.buttons[2]
+        grip_button = data.buttons[3]
 
         if app_menu_button:
-            # re-center the target pose
-            if not self.center_target_pose():
-                sys.exit(0)
-            self.pause_tracking = not self.pause_tracking  # Pause/Resume tracking
+            if rospy.get_time() - self.last_reset_stamp > 0.5:
+                # re-center the target pose
+                if not self.center_target_pose():
+                    sys.exit(0)
+                self.pause_tracking = not self.pause_tracking  # Pause/Resume tracking
+                self.last_reset_stamp = rospy.get_time()
+        
+        if grip_button:
+            if rospy.get_time() - self.last_grip_button_switch_stamp > 0.5:
+                self.grip_button_switch = not self.grip_button_switch
+                self.last_grip_button_switch_stamp = rospy.get_time()
 
-            rospy.sleep(0.5)
+
 
         if trigger_button:  # just track target pose for gripper
             self.target_gripper_pose = max(0.0, 1.-trigger_button/100.0)  # In percentage
@@ -288,6 +300,9 @@ class VRControllerPoseMapper:
         self.broadcast_pose_to_tf()
 
     def wrench_cb(self, data: WrenchStamped):
+        if self.pause_tracking:
+            return
+
         # Only uses the sum of forces, so the orientation is irrelevant
         wrench = conversions.from_wrench(data.wrench)
 
@@ -298,10 +313,10 @@ class VRControllerPoseMapper:
 
         total_force = np.sum(np.abs(forces))
 
-        force_sensitivity = [3.0, 50.0]  # Min and Max force to map to vibration intensity
+        force_sensitivity = [5.0, 50.0]  # Min and Max force to map to vibration intensity
 
         if total_force > force_sensitivity[0] \
-                and rospy.get_time() - self.haptic_feedback_last_stamp > 0.075:  # Avoid sending too many haptic commands
+                and rospy.get_time() - self.haptic_feedback_last_stamp > 0.1:  # Avoid sending too many haptic commands
 
             haptic_msg = ControllerHapticCommand()
             haptic_msg.controller_name = self.controller_name
@@ -309,7 +324,7 @@ class VRControllerPoseMapper:
 
             # rospy.loginfo(f"{round(haptic_msg.duration_microsecs, 2)} {np.round(total_force, 1)}")
 
-            # self.haptic_feedback_pub.publish(haptic_msg)
+            self.haptic_feedback_pub.publish(haptic_msg)
             self.haptic_feedback_last_stamp = rospy.get_time()
 
     def broadcast_pose_to_tf(self):
