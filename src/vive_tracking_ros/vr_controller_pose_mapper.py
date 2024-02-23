@@ -53,12 +53,11 @@ class VRControllerPoseMapper:
         self.controller_center_orientation = np.array([0, 0, 0, 1])
         self.target_gripper_pose = 1.0  # Fully open
 
-        self.enable_controller_inputs = True
         # when tracking is pause, the current pose of the robot is published as the target pose
         self.pause_tracking = False
-        self.last_reset_stamp = 0.0 
+        self.last_reset_stamp = 0.0
 
-        self.grip_button_switch = False # information only 
+        self.grip_button_switch = False  # information only
         self.last_grip_button_switch_stamp = 0.0
 
         # self.arm = arm.Arm(namespace=self.robot_ns, gripper_type=None, joint_names_prefix=f'{self.robot_ns}_')
@@ -151,6 +150,11 @@ class VRControllerPoseMapper:
 
         rospy.loginfo(f"Tracking mode: {self.tracking_mode}")
 
+    def reset(self):
+        self.pause_tracking = True
+        self.grip_button_switch = False
+        self.target_gripper_pose = 1.0
+
     def get_transformation(self, source, target):
         try:
             return self.tf_buffer.lookup_transform(
@@ -181,9 +185,6 @@ class VRControllerPoseMapper:
         return True
 
     def vive_joy_cb(self, data: Joy):
-        if not self.enable_controller_inputs:
-            return
-
         app_menu_button = data.buttons[0]
         trigger_button = data.buttons[2]
         grip_button = data.buttons[3]
@@ -195,13 +196,11 @@ class VRControllerPoseMapper:
                     sys.exit(0)
                 self.pause_tracking = not self.pause_tracking  # Pause/Resume tracking
                 self.last_reset_stamp = rospy.get_time()
-        
+
         if grip_button:
             if rospy.get_time() - self.last_grip_button_switch_stamp > 0.5:
                 self.grip_button_switch = not self.grip_button_switch
                 self.last_grip_button_switch_stamp = rospy.get_time()
-
-
 
         if trigger_button:  # just track target pose for gripper
             self.target_gripper_pose = max(0.0, 1.-trigger_button/100.0)  # In percentage
@@ -313,7 +312,7 @@ class VRControllerPoseMapper:
 
         total_force = np.sum(np.abs(forces))
 
-        force_sensitivity = [5.0, 50.0]  # Min and Max force to map to vibration intensity
+        force_sensitivity = [3.0, 50.0]  # Min and Max force to map to vibration intensity
 
         if total_force > force_sensitivity[0] \
                 and rospy.get_time() - self.haptic_feedback_last_stamp > 0.1:  # Avoid sending too many haptic commands
