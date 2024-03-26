@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import collections
 import math
 import numpy as np
 import rospy
@@ -100,6 +101,8 @@ class VRControllerPoseMapper:
         if self.wrench_topic:
             rospy.Subscriber(self.wrench_topic, WrenchStamped, self.wrench_cb, queue_size=1)
 
+        self.wrench_queue = collections.deque(maxlen=50)
+
     def load_static_transforms(self):
         controller2robot = self.get_transformation(source=self.controller_frame, target=self.robot_frame)
         if not controller2robot:
@@ -198,7 +201,7 @@ class VRControllerPoseMapper:
                 self.last_reset_stamp = rospy.get_time()
 
         if grip_button:
-            if rospy.get_time() - self.last_grip_button_switch_stamp > 0.5:
+            if rospy.get_time() - self.last_grip_button_switch_stamp > 0.01:
                 self.grip_button_switch = not self.grip_button_switch
                 self.last_grip_button_switch_stamp = rospy.get_time()
 
@@ -299,11 +302,13 @@ class VRControllerPoseMapper:
         self.broadcast_pose_to_tf()
 
     def wrench_cb(self, data: WrenchStamped):
+        # Only uses the sum of forces, so the orientation is irrelevant
+        self.wrench_queue.append(conversions.from_wrench(data.wrench))
+
         if self.pause_tracking:
             return
 
-        # Only uses the sum of forces, so the orientation is irrelevant
-        wrench = conversions.from_wrench(data.wrench)
+        wrench = np.average(self.wrench_queue, axis=0)
 
         if self.sensor_frame != self.end_effector_frame:
             forces = wrench[:3] + spalg.sensor_torque_to_tcp_force(sensor_torques=wrench[3:], tcp_position=self.sensor_to_eef_translation)
