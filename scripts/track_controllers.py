@@ -168,8 +168,9 @@ class ViveTrackingROS():
             return False
 
         # Rotate twist to align with ROS world (x forward/backward, y right/left, z up/down)
-        rotation = tr.quaternion_from_euler(0.0, tau/8, 0.0)
-        rotation = math_utils.rotate_quaternion_by_rpy(-tau/4, tau/2, 0.0, rotation)
+        # rotation = tr.quaternion_from_euler(0.0, tau/8, 0.0)
+        rotation = tr.quaternion_from_euler(0.0, 0.0, 0.0)
+        rotation = math_utils.rotate_quaternion_by_rpy(-tau/4, tau/2, tau/2, rotation)
 
         pose[:3] = math_utils.quaternion_rotate_vector(rotation, pose[:3])
         pose[3:] = math_utils.normalize_quaternion(math_utils.quaternion_multiply(rotation, pose[3:]))
