@@ -148,6 +148,10 @@ class VRControllerPoseMapper:
         self.scale_velocities = config['safety']['scale_velocities']
         self.scale_velocities = np.clip(self.scale_velocities, 0.0, 1.0)
 
+        # Scale down translation when using tracking mode = 'controller_pose'
+        self.scale_translation = config['safety']['scale_translation']
+        self.scale_translation = np.clip(self.scale_translation, 0.0, 1.0)
+
         # Topics
         self.wrench_topic = config['topics'].get('wrench', None)
 
@@ -235,6 +239,10 @@ class VRControllerPoseMapper:
 
                 if np.abs(delta_rotation)[i] > self.play_area[i+3]:
                     delta_rotation[i] = math.copysign(self.play_area[i+3], delta_rotation[i])
+
+        # Scale down controller translation
+        delta_translation *= self.scale_translation[:3]
+        delta_rotation *= self.scale_translation[3:]
 
         self.target_position = self.robot_center_position + delta_translation
         self.target_orientation = math_utils.rotate_quaternion_by_rpy(*delta_rotation, self.robot_center_orientation)
