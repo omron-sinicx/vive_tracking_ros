@@ -328,8 +328,11 @@ class VRControllerPoseMapper:
 
             # rospy.loginfo(f"{round(haptic_msg.duration_microsecs, 2)} {np.round(total_force, 1)}")
 
-            self.haptic_feedback_pub.publish(haptic_msg)
-            self.haptic_feedback_last_stamp = rospy.get_time()
+            try:
+                self.haptic_feedback_pub.publish(haptic_msg)
+                self.haptic_feedback_last_stamp = rospy.get_time()
+            except rospy.ROSException:
+                pass
 
     def broadcast_pose_to_tf(self):
         if self.last_tf_stamp == rospy.Time.now():
