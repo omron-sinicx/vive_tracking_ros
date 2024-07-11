@@ -43,6 +43,9 @@ class ViveTrackingROS():
 
         self.vr.print_discovered_objects()
 
+        self.is_first_visit = {}
+        self.is_quat_flipped = {}
+
     def run(self):
 
         controller_input_thread = threading.Thread(target=self.wait_for_controller_events)
@@ -167,10 +170,27 @@ class ViveTrackingROS():
         if pose is None:
             return False
 
-        # Rotate twist to align with ROS world (x forward/backward, y right/left, z up/down)
-        # rotation = tr.quaternion_from_euler(0.0, tau/8, 0.0)
-        rotation = tr.quaternion_from_euler(0.0, 0.0, 0.0)
-        rotation = math_utils.rotate_quaternion_by_rpy(-tau/4, tau/2, tau/2, rotation)
+        # rospy.loginfo_throttle(1, f"device {device_name} q:{np.round(pose[3:],4)}")
+
+        if self.is_quat_flipped.get(device_name, None) is None:
+            error_unflipped = np.linalg.norm(math_utils.quaternions_orientation_error(pose[3:], [0.125, 0.724, -0.0191, 0.6781]), ord=2)
+            error_flipped = np.linalg.norm(math_utils.quaternions_orientation_error(pose[3:], [0.0101, -0.8328, 0.138, 0.5359]), ord=2)
+            
+            self.is_quat_flipped[device_name] = error_unflipped > error_flipped
+            rospy.loginfo(f"Quat error unflipped: {error_unflipped}")
+            rospy.loginfo(f"Quat error flipped: {error_flipped}")
+            rospy.loginfo(f"Is quat flipped?: {self.is_quat_flipped}")
+
+        if not self.is_quat_flipped.get(device_name):
+            # Rotate twist to align with ROS world (x forward/backward, y right/left, z up/down)
+            rotation = tr.quaternion_from_euler(0.0, -tau/2, 0.0)
+            rotation = math_utils.rotate_quaternion_by_rpy(tau/4, 0.0, 0, rotation)
+            rotation = math_utils.rotate_quaternion_by_rpy(0.0, 0.0, tau/2, rotation)
+        else:
+            # 2nd orientation
+            rotation = tr.quaternion_from_euler(0.0, 0.0, tau/2)
+            rotation = math_utils.rotate_quaternion_by_rpy(-tau/4, 0.0, 0, rotation)
+            rotation = math_utils.rotate_quaternion_by_rpy(0.0, 0.0, tau/16, rotation)
 
         pose[:3] = math_utils.quaternion_rotate_vector(rotation, pose[:3])
         pose[3:] = math_utils.normalize_quaternion(math_utils.quaternion_multiply(rotation, pose[3:]))
