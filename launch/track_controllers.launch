@@ -5,6 +5,9 @@
     <node name="vive" pkg="vive_tracking_ros" type="track_controllers.py" output="screen">
         <param name="config_file" value="$(find vive_tracking_ros)/config/vive_config.yaml" />
         <param name="publishing_rate" value="100" type="int" />
+        <param name="filter_pose" value="true" type="bool" />
+        <param name="quaternion_filter_alpha" value="0.1" type="double" />
+        <param name="position_filter_window_size" value="10" type="int" />
     </node>
 
     <node name="static_transform_publisher" pkg="tf" type="static_transform_publisher" args="0 0 0.0 0.0 0.0 0.0 world vive_world 1"/>

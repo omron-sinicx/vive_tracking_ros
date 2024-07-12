@@ -8,6 +8,7 @@ import threading
 
 import geometry_msgs.msg
 import sensor_msgs.msg
+from vive_tracking_ros.filters import PoseLowPassFilter, QuaternionLowPassFilter
 import vive_tracking_ros.msg
 from vive_tracking_ros import math_utils, conversions
 
@@ -43,8 +44,13 @@ class ViveTrackingROS():
 
         self.vr.print_discovered_objects()
 
-        self.is_first_visit = {}
         self.is_quat_flipped = {}
+
+        # keep previous orientation to check quaternion sign
+        publishing_rate = rospy.get_param("~filter_pose", True)
+        self.pose_filter = {}
+        self.quaternion_filter_fraction = rospy.get_param("~quaternion_filter_alpha", 0.1)
+        self.position_filter_window_size = int(rospy.get_param("~position_filter_window_size", 10))
 
     def run(self):
 
@@ -59,7 +65,7 @@ class ViveTrackingROS():
                 self.publish_twist(device_name)
 
                 pose = self.compute_device_pose(device_name)
-                if pose:
+                if pose is not None:
                     self.publish_controller_pose(device_name, pose)
                     self.broadcast_pose_to_tf(device_name, pose)
 
@@ -168,21 +174,28 @@ class ViveTrackingROS():
         pose = device.get_pose_quaternion()
 
         if pose is None:
-            return False
+            return None
+
+        # Apply filter to raw device pose
+        if self.pose_filter.get(device_name, None) is None:
+            self.pose_filter[device_name] = PoseLowPassFilter(self.quaternion_filter_fraction, self.position_filter_window_size)
+        pose = self.pose_filter[device_name].update(pose)
 
         # rospy.loginfo_throttle(1, f"device {device_name} q:{np.round(pose[3:],4)}")
 
         if self.is_quat_flipped.get(device_name, None) is None:
-            error_unflipped = np.linalg.norm(math_utils.quaternions_orientation_error(pose[3:], [0.125, 0.724, -0.0191, 0.6781]), ord=2)
-            error_flipped = np.linalg.norm(math_utils.quaternions_orientation_error(pose[3:], [0.0101, -0.8328, 0.138, 0.5359]), ord=2)
-            
+            error_unflipped = np.linalg.norm(math_utils.quaternions_orientation_error(pose[3:], [0.125, 0.724, -0.0191, 0.6781]))
+            error_flipped = np.linalg.norm(math_utils.quaternions_orientation_error(pose[3:], [0.0101, -0.8328, 0.138, 0.5359]))
+
             self.is_quat_flipped[device_name] = error_unflipped > error_flipped
             rospy.loginfo(f"Quat error unflipped: {error_unflipped}")
             rospy.loginfo(f"Quat error flipped: {error_flipped}")
             rospy.loginfo(f"Is quat flipped?: {self.is_quat_flipped}")
 
+        # Rotate twist to align with ROS world (x forward/backward, y right/left, z up/down)
+        # TODO(cambel): how to have a unified orientation? maybe check basestation orientation?
         if not self.is_quat_flipped.get(device_name):
-            # Rotate twist to align with ROS world (x forward/backward, y right/left, z up/down)
+            # 1nd orientation
             rotation = tr.quaternion_from_euler(0.0, -tau/2, 0.0)
             rotation = math_utils.rotate_quaternion_by_rpy(tau/4, 0.0, 0, rotation)
             rotation = math_utils.rotate_quaternion_by_rpy(0.0, 0.0, tau/2, rotation)
@@ -210,7 +223,8 @@ class ViveTrackingROS():
         pose_topic.publish(pose_msg)
 
     def broadcast_pose_to_tf(self, device_name, pose):
-        if device_name in self.last_tf_stamp_dict and self.last_tf_stamp_dict[device_name] == rospy.Time.now():
+        if self.last_tf_stamp_dict.get(device_name, None) \
+                and self.last_tf_stamp_dict[device_name] == rospy.Time.now():
             rospy.logerr("Ignoring request to publish TF, not enough time has passed.")
             return
 

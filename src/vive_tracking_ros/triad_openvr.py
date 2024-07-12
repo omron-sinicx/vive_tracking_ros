@@ -43,7 +43,7 @@ def convert_to_quaternion(pose_mat):
     x = pose_mat[0][3]
     y = pose_mat[1][3]
     z = pose_mat[2][3]
-    return [x, y, z] + quat.tolist()
+    return np.concatenate([[x, y, z], quat])
 
 # Define a class to make it easy to append pose matricies and convert to both Euler and Quaternion for plotting
 
