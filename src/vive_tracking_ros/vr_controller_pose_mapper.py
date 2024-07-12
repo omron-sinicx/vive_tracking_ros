@@ -141,7 +141,7 @@ class VRControllerPoseMapper:
 
         # Safety params
         # Limit the displacement to the play area
-        self.play_area = config['safety']['play_area']
+        self.play_area = np.array(config['safety']['play_area'])
         self.play_area[3:] = np.deg2rad(self.play_area[3:])
 
         # Scale down tracking when using tracking mode = 'controller_twist'
@@ -151,6 +151,10 @@ class VRControllerPoseMapper:
         # Scale down translation when using tracking mode = 'controller_pose'
         self.scale_translation = config['safety']['scale_translation']
         self.scale_translation = np.clip(self.scale_translation, 0.0, 1.0)
+
+        # Delta limits from robot's current pose to target pose
+        self.max_delta_translation = config['safety']['max_delta_translation']
+        self.max_delta_rotation = np.deg2rad(config['safety']['max_delta_rotation'])
 
         # Topics
         self.wrench_topic = config['topics'].get('wrench', None)
@@ -222,6 +226,7 @@ class VRControllerPoseMapper:
         if self.pause_tracking:
             return self.publish_robot_current_pose()
 
+        # Compute relative translation/rotation from controller center position
         delta_translation = self.current_controller_position - self.controller_center_position
         delta_rotation = math_utils.quaternions_orientation_error(self.current_controller_orientation, self.controller_center_orientation)*2
         if self.world_frame:  # Rotate to a common frame of reference before applying delta
@@ -231,24 +236,21 @@ class VRControllerPoseMapper:
         # rospy.loginfo_throttle(1, f"diff {np.round(delta_translation, 2)}")
         # rospy.loginfo_throttle(1, f"diff {np.round(np.rad2deg(delta_rotation), 2)}")
 
-        if np.any(np.abs(delta_translation) > self.play_area[:3]) or np.any(np.abs(delta_rotation) > self.play_area[3:]):
-
-            for i in range(3):
-                if np.abs(delta_translation)[i] > self.play_area[i]:
-                    delta_translation[i] = math.copysign(self.play_area[i], delta_translation[i])
-
-                if np.abs(delta_rotation)[i] > self.play_area[i+3]:
-                    delta_rotation[i] = math.copysign(self.play_area[i+3], delta_rotation[i])
+        # Limit translation/rotation to the defined play_area
+        delta_translation = np.clip(delta_translation, -self.play_area[:3], self.play_area[:3])
+        delta_rotation = np.clip(delta_rotation, -self.play_area[3:], self.play_area[3:])
 
         # Scale down controller translation
         delta_translation *= self.scale_translation[:3]
         delta_rotation *= self.scale_translation[3:]
 
+        delta_translation, delta_rotation = self.enforce_max_delta(delta_translation, delta_rotation)
+
         self.target_position = self.robot_center_position + delta_translation
         self.target_orientation = math_utils.rotate_quaternion_by_rpy(*delta_rotation, self.robot_center_orientation)
         self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
 
-        self.broadcast_pose_to_tf()
+        self.broadcast_pose_to_tf(self.target_position, self.target_orientation)
 
     def vive_twist_cb(self, data: TwistStamped):
         """ Numerically integrate twist message into a pose
@@ -301,13 +303,13 @@ class VRControllerPoseMapper:
             self.target_orientation = next_orientation
         self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
 
-        self.broadcast_pose_to_tf()
+        self.broadcast_pose_to_tf(self.target_position, self.target_orientation)
 
     def publish_robot_current_pose(self):
         self.target_position = self.robot_center_position
         self.target_orientation = self.robot_center_orientation
         self.target_orientation_axis_angles = math_utils.axis_angle_from_quaternion(self.target_orientation)
-        self.broadcast_pose_to_tf()
+        self.broadcast_pose_to_tf(self.target_position, self.target_orientation)
 
     def wrench_cb(self, data: WrenchStamped):
         # Only uses the sum of forces, so the orientation is irrelevant
@@ -342,20 +344,20 @@ class VRControllerPoseMapper:
             except rospy.ROSException:
                 pass
 
-    def broadcast_pose_to_tf(self):
+    def broadcast_pose_to_tf(self, position, orientation, name="vr_target_pose"):
         if self.last_tf_stamp == rospy.Time.now():
             rospy.logdebug("Ignoring request to publish TF, not enough time has passed.")
             return
 
-        child_frame = "vr_target_pose" if not self.robot_ns else self.robot_ns + "_vr_target_pose"
+        child_frame = name if not self.robot_ns else f"{self.robot_ns}_{name}"
 
         t = TransformStamped()
 
         t.header.stamp = rospy.Time.now()
         t.header.frame_id = self.robot_frame
         t.child_frame_id = child_frame
-        t.transform.translation = conversions.to_point(self.target_position)
-        t.transform.rotation = conversions.to_quaternion(self.target_orientation)
+        t.transform.translation = conversions.to_point(position)
+        t.transform.rotation = conversions.to_quaternion(orientation)
 
         try:
             self.tf_broadcaster.sendTransform(t)
@@ -363,3 +365,38 @@ class VRControllerPoseMapper:
             pass
 
         self.last_tf_stamp = t.header.stamp
+
+    def enforce_max_delta(self, delta_translation, delta_rotation):
+        """
+            Make sure that the absolute error between the current pose of the robot and the target pose
+            given by the controller is less or equal to `max_delta_translation` and `max_delta_rotation`.
+
+            returns bounded deltas
+        """
+
+        robot_current_pose = self.kdl.forward(self.arm_controller.get_joint_positions())
+
+        # distance from the starting (center) pose to the robot's current pose
+        current_translation = robot_current_pose[:3] - self.robot_center_position
+        current_rotation = math_utils.quaternions_orientation_error(robot_current_pose[3:], self.robot_center_orientation)
+
+        # pose from the starting (center) pose to the controller's current pose
+        temp_target_position = self.robot_center_position + delta_translation
+        temp_target_orientation = math_utils.rotate_quaternion_by_rpy(*delta_rotation, self.robot_center_orientation)
+
+        # distance from the robot's current pose to the controller's current pose
+        error_translation = temp_target_position - robot_current_pose[:3]
+        error_rotation = math_utils.quaternions_orientation_error(temp_target_orientation, robot_current_pose[3:])
+
+        if np.any(np.abs(error_translation) > self.max_delta_translation) \
+                or np.any(np.abs(error_translation) > self.max_delta_translation):
+            self.broadcast_pose_to_tf(temp_target_position, temp_target_orientation, name="unconstrained_target_pose")
+
+        # apply limits
+        error_translation = np.clip(error_translation, -self.max_delta_translation, self.max_delta_translation)
+        error_rotation = np.clip(error_rotation, -self.max_delta_rotation, self.max_delta_rotation)
+
+        delta_translation = current_translation + error_translation
+        delta_rotation = (current_rotation + error_rotation)*2  # why x2?
+
+        return delta_translation, delta_rotation
