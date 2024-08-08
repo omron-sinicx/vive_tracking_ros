@@ -30,9 +30,9 @@ class LowPassFilter:
 
 
 class PoseLowPassFilter:
-    def __init__(self, alpha, window_size) -> None:
+    def __init__(self, fraction, window_size) -> None:
         self.pos_filter = LowPassFilter(window_size)
-        self.quat_filter = QuaternionLowPassFilter(alpha)
+        self.quat_filter = QuaternionLowPassFilter(fraction)
 
     def update(self, pose):
         filtered_pose = np.zeros_like(pose)
