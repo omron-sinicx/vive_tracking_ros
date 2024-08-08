@@ -56,10 +56,8 @@ class VRControllerPoseMapper:
 
         # when tracking is pause, the current pose of the robot is published as the target pose
         self.pause_tracking = False
-        self.last_reset_stamp = 0.0
-
         self.grip_button_switch = False  # information only
-        self.last_grip_button_switch_stamp = 0.0
+        self.last_button_state = {}
 
         # self.arm = arm.Arm(namespace=self.robot_ns, gripper_type=None, joint_names_prefix=f'{self.robot_ns}_')
         self.arm_controller = JointTrajectoryController(publisher_name=JOINT_TRAJECTORY_CONTROLLER,
@@ -200,21 +198,23 @@ class VRControllerPoseMapper:
         trigger_button = data.buttons[2]
         grip_button = data.buttons[3]
 
-        if app_menu_button:
-            if rospy.get_time() - self.last_reset_stamp > 0.5:
-                # re-center the target pose
-                if not self.center_target_pose():
-                    sys.exit(0)
-                self.pause_tracking = not self.pause_tracking  # Pause/Resume tracking
-                self.last_reset_stamp = rospy.get_time()
+        if app_menu_button and not self.last_button_state.get('app_menu_button', False):
+            # re-center the target pose
+            self.center_target_pose()
+            self.pause_tracking = not self.pause_tracking  # Pause/Resume tracking
 
-        if grip_button:
-            if rospy.get_time() - self.last_grip_button_switch_stamp > 0.01:
-                self.grip_button_switch = not self.grip_button_switch
-                self.last_grip_button_switch_stamp = rospy.get_time()
+            self.last_button_state['app_menu_button'] = app_menu_button
+        else:
+            self.last_button_state['app_menu_button'] = app_menu_button
+
+        if grip_button and not self.last_button_state.get('grip_button', False):
+            self.grip_button_switch = not self.grip_button_switch
+            self.last_button_state['grip_button'] = grip_button
+        else:
+            self.last_button_state['grip_button'] = grip_button
 
         if trigger_button:  # just track target pose for gripper
-            self.target_gripper_pose = max(0.0, 1.-trigger_button/100.0)  # In percentage
+            self.target_gripper_pose = max(0.0, 1.0 - trigger_button/100.0)  # In percentage
 
     def vive_pose_cb(self, data: PoseStamped):
         """

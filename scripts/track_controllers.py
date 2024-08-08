@@ -86,7 +86,7 @@ class ViveTrackingROS():
         while not rospy.is_shutdown():
 
             while self.vr.vrsystem.pollNextEvent(event):
-                if event.eventType == openvr.VREvent_ButtonPress:
+                if event.eventType in [openvr.VREvent_ButtonPress, openvr.VREvent_ButtonUnpress]:
                     # print("button pressed", event.trackedDeviceIndex, event.data.controller.button)
                     self.publish_controller_input(self.vr.device_index_map[event.trackedDeviceIndex])
                     if event.data.controller.button == 33 or event.data.controller.button == 32:
@@ -103,6 +103,9 @@ class ViveTrackingROS():
                 elif event.eventType == openvr.VREvent_TrackedDeviceDeactivated:
                     # If we were already tracking this device, quit tracking it.
                     if event.trackedDeviceIndex in self.vr.device_index_map:
+                        if self.vr.vr.getTrackedDeviceClass(event.trackedDeviceIndex) == openvr.TrackedDeviceClass_TrackingReference:
+                            # If the lighthouses are disconnected, check quat flipped again
+                            self.is_quat_flipped = {}
                         self.vr.remove_tracked_device(event.trackedDeviceIndex)
 
             self.dev_pub_rate.sleep()
