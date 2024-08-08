@@ -157,7 +157,7 @@ class TeleoperationBase:
         controller_orientation = conversions.from_quaternion(data.pose.orientation)
 
         delta_translation = controller_position - self.controller_center_position
-        delta_rotation = math_utils.quaternions_orientation_error(controller_orientation, self.controller_center_orientation)*2
+        delta_rotation = math_utils.orientation_error_as_rotation_vector(controller_orientation, self.controller_center_orientation)
         if self.world_frame:  # Rotate to a common frame of reference before applying delta
             delta_translation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_translation)
             delta_rotation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_rotation)
@@ -208,7 +208,7 @@ class TeleoperationBase:
         next_orientation = math_utils.integrate_unit_quaternion_DMM(self.target_orientation, angular_vel, dt)
 
         delta_translation = next_pose - self.robot_center_position
-        delta_rotation = math_utils.quaternions_orientation_error(next_orientation, self.robot_center_orientation)
+        delta_rotation = math_utils.orientation_error_as_rotation_vector(next_orientation, self.robot_center_orientation)
         # rospy.loginfo_throttle(1, f"diff {np.round(angular_vel, 4)}  {np.round(np.rad2deg(delta_rotation), 2)}")
 
         if np.any(np.abs(delta_translation) > self.play_area[:3]) or np.any(np.abs(delta_rotation) > self.play_area[3:]):

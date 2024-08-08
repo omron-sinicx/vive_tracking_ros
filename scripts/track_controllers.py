@@ -187,8 +187,8 @@ class ViveTrackingROS():
         # rospy.loginfo_throttle(1, f"device {device_name} q:{np.round(pose[3:],4)}")
 
         if self.is_quat_flipped.get(device_name, None) is None:
-            error_unflipped = np.linalg.norm(math_utils.quaternions_orientation_error(pose[3:], [0.125, 0.724, -0.0191, 0.6781]))
-            error_flipped = np.linalg.norm(math_utils.quaternions_orientation_error(pose[3:], [0.0101, -0.8328, 0.138, 0.5359]))
+            error_unflipped = np.linalg.norm(math_utils.orientation_error_as_rotation_vector(pose[3:], [0.125, 0.724, -0.0191, 0.6781]))
+            error_flipped = np.linalg.norm(math_utils.orientation_error_as_rotation_vector(pose[3:], [0.0101, -0.8328, 0.138, 0.5359]))
 
             self.is_quat_flipped[device_name] = error_unflipped > error_flipped
             rospy.loginfo(f"Quat error unflipped: {error_unflipped}")
