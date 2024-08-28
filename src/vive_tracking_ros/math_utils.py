@@ -51,6 +51,24 @@ def quaternions_orientation_error(quat_target, quat_source):
     return from_np_quaternion(qt*qs.conjugate())
 
 
+def orientation_error_as_euler(quat_target, quat_source):
+    """
+    Calculates the orientation error between two quaternions
+    quat_target is the desired orientation
+    quat_source is the current orientation
+    both with respect to the same fixed frame
+
+    return vector part
+    """
+    qs = np.array(quat_source)
+    qt = np.array(quat_target)
+
+    ne = qs[3]*qt[3] + np.dot(qs[:3].T, qt[:3])
+    ee = qs[3]*np.array(qt[:3]) - qt[3]*np.array(qs[:3]) + np.dot(skew(qs[:3]), qt[:3])
+    ee *= np.sign(ne)  # disambiguate the sign of the quaternion
+    return ee
+
+
 def quaternion_multiply(quaternion1, quaternion0):
     q1 = to_np_quaternion(quaternion1)
     q0 = to_np_quaternion(quaternion0)

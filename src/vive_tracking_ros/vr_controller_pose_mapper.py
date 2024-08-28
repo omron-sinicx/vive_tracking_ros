@@ -35,8 +35,8 @@ class VRControllerPoseMapper:
 
     """
 
-    def __init__(self, config_filepath):
-        self.load_params(config_filepath)
+    def __init__(self, config_params):
+        self.load_params(config_params)
 
         self.tf_buffer = tf2_ros.Buffer(cache_time=rospy.Duration(3.0))
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
@@ -54,8 +54,9 @@ class VRControllerPoseMapper:
         self.target_gripper_pose = 1.0  # Fully open
 
         # when tracking is pause, the current pose of the robot is published as the target pose
-        self.pause_tracking = False
+        self.pause_tracking = True
         self.grip_button_switch = False  # information only
+        self.trackpad_pressed = False  # information only
         self.last_button_state = {}
 
         # self.arm = arm.Arm(namespace=self.robot_ns, gripper_type=None, joint_names_prefix=f'{self.robot_ns}_')
@@ -118,9 +119,12 @@ class VRControllerPoseMapper:
                 assert ValueError("Failed to compute transform between the ft sensor and the robot's end effector frame")
             self.sensor_to_eef_translation = conversions.from_point(sensor2eef_transform.transform.translation)
 
-    def load_params(self, config_filepath):
-        with open(config_filepath, 'r') as f:
-            config = yaml.safe_load(f)
+    def load_params(self, config_params):
+        if isinstance(config_params, str):
+            with open(config_params, 'r') as f:
+                config = yaml.safe_load(f)
+        elif isinstance(config_params, dict):
+            config = config_params
 
         # Robot params
         self.robot_ns = config['robot'].get('namespace', None)
@@ -161,6 +165,7 @@ class VRControllerPoseMapper:
     def reset(self):
         self.pause_tracking = True
         self.grip_button_switch = False
+        self.trackpad_pressed = False
         self.target_gripper_pose = 1.0
 
     def get_transformation(self, source, target):
@@ -193,8 +198,16 @@ class VRControllerPoseMapper:
 
     def vive_joy_cb(self, data: Joy):
         app_menu_button = data.buttons[0]
+        trackpad_button = data.buttons[1]
+
         trigger_button = data.buttons[2]
         grip_button = data.buttons[3]
+
+        if trackpad_button and not self.last_button_state.get('trackpad_button', False):
+            self.trackpad_pressed = not self.trackpad_pressed
+            self.last_button_state['trackpad_button'] = trackpad_button
+        else:
+            self.last_button_state['trackpad_button'] = trackpad_button
 
         if app_menu_button and not self.last_button_state.get('app_menu_button', False):
             # re-center the target pose
@@ -226,7 +239,7 @@ class VRControllerPoseMapper:
 
         # Compute relative translation/rotation from controller center position
         delta_translation = self.current_controller_position - self.controller_center_position
-        delta_rotation = math_utils.orientation_error_as_rotation_vector(self.current_controller_orientation, self.controller_center_orientation)
+        delta_rotation = math_utils.orientation_error_as_euler(self.current_controller_orientation, self.controller_center_orientation)*2
         if self.world_frame:  # Rotate to a common frame of reference before applying delta
             delta_translation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_translation)
             delta_rotation = math_utils.quaternion_rotate_vector(self.world_to_robot_rotation, delta_rotation)
@@ -246,7 +259,8 @@ class VRControllerPoseMapper:
         delta_translation, delta_rotation = self.enforce_max_delta(delta_translation, delta_rotation)
 
         self.target_position = self.robot_center_position + delta_translation
-        self.target_orientation = math_utils.rotate_quaternion_by_delta(delta_rotation, self.robot_center_orientation)
+        # self.target_orientation = math_utils.rotate_quaternion_by_delta(delta_rotation, self.robot_center_orientation)
+        self.target_orientation = math_utils.rotate_quaternion_by_rpy(*delta_rotation, self.robot_center_orientation)
 
         self.broadcast_pose_to_tf(self.target_position, self.target_orientation)
 
@@ -283,7 +297,7 @@ class VRControllerPoseMapper:
         next_orientation = math_utils.integrate_unit_quaternion_DMM(self.target_orientation, angular_vel, dt)
 
         delta_translation = next_pose - self.robot_center_position
-        delta_rotation = math_utils.orientation_error_as_rotation_vector(next_orientation, self.robot_center_orientation)
+        delta_rotation = math_utils.orientation_error_as_euler(next_orientation, self.robot_center_orientation)*2
         # rospy.loginfo_throttle(1, f"diff {np.round(angular_vel, 4)}  {np.round(np.rad2deg(delta_rotation), 2)}")
 
         if np.any(np.abs(delta_translation) > self.play_area[:3]) or np.any(np.abs(delta_rotation) > self.play_area[3:]):
@@ -370,7 +384,7 @@ class VRControllerPoseMapper:
 
         # distance from the starting (center) pose to the robot's current pose
         current_translation = robot_current_pose[:3] - self.robot_center_position
-        current_rotation = math_utils.orientation_error_as_rotation_vector(robot_current_pose[3:], self.robot_center_orientation)
+        current_rotation = math_utils.orientation_error_as_euler(robot_current_pose[3:], self.robot_center_orientation)*2
 
         # pose from the starting (center) pose to the controller's current pose
         temp_target_position = self.robot_center_position + delta_translation
@@ -378,7 +392,7 @@ class VRControllerPoseMapper:
 
         # distance from the robot's current pose to the controller's current pose
         error_translation = temp_target_position - robot_current_pose[:3]
-        error_rotation = math_utils.orientation_error_as_rotation_vector(temp_target_orientation, robot_current_pose[3:])
+        error_rotation = math_utils.orientation_error_as_euler(temp_target_orientation, robot_current_pose[3:])*2
 
         if np.any(np.abs(error_translation) > self.max_delta_translation) \
                 or np.any(np.abs(error_rotation) > self.max_delta_rotation):
