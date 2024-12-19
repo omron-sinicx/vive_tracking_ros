@@ -73,3 +73,16 @@ SteamVR files should be located in: `~/.steam/steam/steamapps/common/SteamVR`
 #### To work without the Headset HMD
 
 See here for [instructions](https://github.com/moon-wreckers/vive_tracker) 
+
+Rewrite default.vrsettings for use without headset.
+
+```
+~/.local/share/Steam/steamapps/common/SteamVR/resources/settings/default.vrsettings
+```
+
+By changing the the following part, it became possible to use Vive Tracker alone.
+```
+3 "requireHmd" : true 
+↓
+3 "requireHmd" : false
+```
