@@ -69,6 +69,16 @@ class ViveTrackingROS():
                     self.publish_controller_pose(device_name, pose)
                     self.broadcast_pose_to_tf(device_name, pose)
 
+            detected_trackers = self.vr.object_names["Tracker"]
+
+            for device_name in detected_trackers:
+                self.publish_twist(device_name)
+
+                pose = self.compute_device_pose(device_name)
+                if pose is not None:
+                    self.publish_controller_pose(device_name, pose)
+                    self.broadcast_pose_to_tf(device_name, pose)
+
             # publishing rate
             self.pub_rate.sleep()
 
@@ -158,7 +168,9 @@ class ViveTrackingROS():
         linear_velocity = math_utils.quaternion_rotate_vector(rotation, linear_velocity[:])
         angular_velocity = math_utils.quaternion_rotate_vector(rotation, angular_velocity[:])
 
-        twist_topic = self.topic_map.get(device_name, rospy.Publisher("/vive/" + device_name + "/twist", geometry_msgs.msg.TwistStamped, queue_size=10))
+        device_name_pub = device_name.replace('-', '_')
+
+        twist_topic = self.topic_map.get(device_name, rospy.Publisher("/vive/" + device_name_pub + "/twist", geometry_msgs.msg.TwistStamped, queue_size=10))
 
         twist_msg = geometry_msgs.msg.TwistStamped()
         twist_msg.header.frame_id = device_name
@@ -214,8 +226,9 @@ class ViveTrackingROS():
         return pose
 
     def publish_controller_pose(self, device_name, pose):  # relative to the base stations
+        device_name_pub = device_name.replace('-', '_')
 
-        pose_topic = self.topic_map.get(device_name, rospy.Publisher("/vive/" + device_name + "/pose", geometry_msgs.msg.PoseStamped, queue_size=10))
+        pose_topic = self.topic_map.get(device_name, rospy.Publisher("/vive/" + device_name_pub + "/pose", geometry_msgs.msg.PoseStamped, queue_size=10))
 
         pose_msg = geometry_msgs.msg.PoseStamped()
         pose_msg.header.frame_id = "vive_world"
